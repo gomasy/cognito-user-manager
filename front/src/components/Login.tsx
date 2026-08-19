@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { AVAILABLE, has, setLang } from "../i18n";
+import { has } from "../i18n";
 import { useT } from "../hooks";
 import type { Challenge, PublicInfo } from "../types";
 
@@ -206,28 +206,8 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
           )}
         </div>
 
-        <LanguagePicker />
         {info && <p className="auth__version">{info.version}</p>}
       </form>
     </main>
-  );
-}
-
-export function LanguagePicker() {
-  const t = useT();
-  return (
-    <div className="lang">
-      <span className="hint">{t("common.language")}</span>
-      {AVAILABLE.map((code) => (
-        <button
-          key={code}
-          type="button"
-          className="btn btn--link"
-          onClick={() => void setLang(code)}
-        >
-          {t(`common.lang.${code}`)}
-        </button>
-      ))}
-    </div>
   );
 }

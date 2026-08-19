@@ -169,7 +169,7 @@ front/
   src/
     index.tsx  App.tsx   entry and routing
     api.ts               typed fetch layer, sends X-App-Lang
-    i18n.ts              catalog loading, t(), language switch
+    i18n.ts              browser language detection, catalog loading, t()
     hooks.ts             useT, useToast, history routing
     types.ts             mirrors the API payloads
     components/          Login, Layout, Account, AdminUsers, AdminUserDetail, …
@@ -251,11 +251,11 @@ POST   /api/admin/users/{username}/invite
 
 ## Internationalization
 
-- The browser language is detected on load; an explicit choice is kept in
-  `localStorage` and switchable from the header.
+- The browser's preferred language is detected on load and settled before the
+  first render; there is no in-app switcher.
 - UI strings live in `front/locales/*.json` and are fetched from `/locales`.
   A missing key falls back to English, then to the key itself.
-- The frontend sends the active language as `X-App-Lang`; `src/locale.rs`
+- The frontend sends the detected language as `X-App-Lang`; `src/locale.rs`
   resolves it (`ja-JP` → `ja`, unknown → `en`) and the handlers phrase their
   messages with `rust-i18n`.
 - Attribute labels and Cognito status values are translated client-side, so a

@@ -1,25 +1,25 @@
 type Catalog = Record<string, string>;
 
-export const AVAILABLE = ["en", "ja"] as const;
-export type LangCode = (typeof AVAILABLE)[number];
+const AVAILABLE = ["en", "ja"] as const;
+type LangCode = (typeof AVAILABLE)[number];
 
 const DEFAULT_LANG: LangCode = "en";
-const STORAGE_KEY = "lang";
 
 const catalogs: Record<string, Catalog> = {};
 let current: LangCode = DEFAULT_LANG;
-const listeners = new Set<() => void>();
 
 function isAvailable(code: string): code is LangCode {
   return (AVAILABLE as readonly string[]).includes(code);
 }
 
-/** Explicit choice first, then the browser's preference. */
+/** The browser's preferred language, if we ship one it asks for. */
 function detect(): LangCode {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored && isAvailable(stored)) return stored;
-  const code = navigator.language.toLowerCase().split("-")[0];
-  return isAvailable(code) ? code : DEFAULT_LANG;
+  const preferences = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const preference of preferences) {
+    const code = preference.toLowerCase().split("-")[0];
+    if (isAvailable(code)) return code;
+  }
+  return DEFAULT_LANG;
 }
 
 async function fetchCatalog(code: string): Promise<Catalog> {
@@ -32,14 +32,10 @@ export function getLang(): LangCode {
   return current;
 }
 
-export function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-/** Loads the fallback catalog plus the detected one, before the first render. */
+/**
+ * Loads the fallback catalog plus the detected one, before the first render.
+ * The language is settled here and never changes afterwards.
+ */
 export async function init(): Promise<void> {
   const detected = detect();
   if (detected === DEFAULT_LANG) {
@@ -56,14 +52,6 @@ export async function init(): Promise<void> {
     }
   }
   document.documentElement.lang = current;
-}
-
-export async function setLang(code: LangCode): Promise<void> {
-  if (!catalogs[code]) catalogs[code] = await fetchCatalog(code);
-  current = code;
-  localStorage.setItem(STORAGE_KEY, code);
-  document.documentElement.lang = code;
-  for (const listener of listeners) listener();
 }
 
 export function has(key: string): boolean {

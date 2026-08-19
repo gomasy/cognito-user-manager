@@ -1,16 +1,8 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import { getLang, has, subscribe, t as translate } from "./i18n";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { getLang, has, t as translate } from "./i18n";
 
-/** Re-renders the component whenever the active language changes. */
+/** The catalog is settled before the first render, so this never changes. */
 export function useT() {
-  useSyncExternalStore(subscribe, getLang);
   return translate;
 }
 
@@ -27,7 +19,6 @@ export function useLabel() {
 }
 
 export function useDateFormat() {
-  useSyncExternalStore(subscribe, getLang);
   return useCallback((iso: string | null) => {
     if (!iso) return "—";
     const date = new Date(iso);

@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useNavigate, useT } from "../hooks";
 import type { SessionInfo } from "../types";
-import { LanguagePicker } from "./Login";
 
 interface Props {
   session: SessionInfo;
@@ -49,7 +48,6 @@ export function Layout({ session, current, onSignOut, children }: Props) {
             <span>{session.email ?? session.username}</span>
             {session.isAdmin && <span className="badge badge--ok">{t("nav.admin")}</span>}
           </div>
-          <LanguagePicker />
           <button type="button" className="btn" onClick={onSignOut}>
             {t("nav.signOut")}
           </button>
