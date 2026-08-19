@@ -10,6 +10,7 @@ pub struct Config {
     pub client_secret: Option<String>,
     /// Members of this group may use the admin screens.
     pub admin_group: String,
+    /// Ignored when the Lambda runtime is hosting the process.
     pub bind: String,
     /// Force the Secure attribute on cookies. `None` derives it per request
     /// from the scheme, so plain-HTTP local use works without configuration.

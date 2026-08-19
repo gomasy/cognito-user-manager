@@ -48,7 +48,14 @@ cargo build --release
 ```
 
 The server reads `front/dist` and `front/locales` relative to its working
-directory.
+directory, and the same two directories ship in the Lambda zip. For AWS Lambda,
+see [docs/lambda.md](docs/lambda.md): the `lambda` cargo feature adds the Lambda
+runtime alongside the server, and which one serves is decided at startup from
+the environment, so one binary covers both.
+
+On SIGTERM or SIGINT the server stops accepting connections and lets in-flight
+requests finish, so a container stop or a `systemctl restart` does not cut one
+short. Lambda uses neither signal; there the runtime owns the lifecycle.
 
 ### Environment variables
 
@@ -140,9 +147,10 @@ pool ARN rather than `*`.
 ## Layout
 
 ```
+docs/lambda.md           deploying behind a Function URL and CloudFront
 locales/                 rust-i18n catalogs for API messages
 src/
-  main.rs                router, state wiring, i18n! invocation
+  main.rs                router, state wiring, i18n!, local / Lambda dispatch
   config.rs              environment variables
   aws.rs                 Cognito client (rustls + ring)
   state.rs               shared state and SECRET_HASH
@@ -265,6 +273,7 @@ POST   /api/admin/users/{username}/invite
 cargo test                      # unit tests
 cargo test -- --ignored         # read-only smoke tests against the real pool
 cargo clippy --all-targets      # unwrap/expect are denied outside tests
+cargo clippy --all-targets --features lambda
 cd front && npm run typecheck
 cd front && npm run build
 ```
