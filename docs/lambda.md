@@ -1,7 +1,9 @@
 # Deploying to Lambda
 
 Function URL behind CloudFront, with the URL locked to `AWS_IAM` so only the
-distribution can invoke it.
+distribution can invoke it. Everything below the build is done from the AWS
+Management Console, bar one `aws lambda add-permission` the console has no
+equivalent for.
 
 ## One binary, either host
 
@@ -38,13 +40,21 @@ use payload v2, which has a dedicated `cookies` array; `lambda_http` fills it in
 
 ## Build
 
+Cross-compiling Rust is the one step the console cannot do. Everything after
+this is point-and-click.
+
 ```bash
 cargo install cargo-lambda            # once; brings its own zig-based linker
-cargo lambda build --release --arm64 --features lambda
+cargo lambda build --release --x86-64 --features lambda
 ```
 
 `rustls + ring` is already pinned in `Cargo.toml`, so nothing here wants cmake
 or a system C toolchain.
+
+Nothing in the code is architecture-specific, so `--arm64` works just as well —
+Graviton bills duration about 20 % cheaper, which on a tool this size is cents
+per month. The flag and the function's **Architecture** setting have to agree,
+or the runtime fails to start with `Runtime.InvalidEntrypoint`.
 
 ## Package
 
@@ -58,7 +68,7 @@ fetches at runtime, has to ship.
 
 ```bash
 cd front && npm run build && cd ..
-cargo lambda build --release --arm64 --features lambda
+cargo lambda build --release --x86-64 --features lambda
 
 rm -rf pkg function.zip
 mkdir -p pkg/front
@@ -71,38 +81,39 @@ In CI, where `.git` may be absent, pass `GIT_HASH` and `BUILD_DATE` as
 environment variables; `build.rs` prefers them over shelling out to git. The
 result is what `/api/public` reports and the sign-in screen shows.
 
-## IAM role
-
-Save the policy from the README's "Cognito configuration" section as
-`iam-policy.json`, with `Resource` scoped to the one user pool ARN.
-
-```bash
-ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-
-aws iam create-role --role-name cognito-user-manager \
-  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
-
-aws iam attach-role-policy --role-name cognito-user-manager \
-  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-
-aws iam put-role-policy --role-name cognito-user-manager \
-  --policy-name cognito-admin --policy-document file://iam-policy.json
-```
+The zip stays well under the console's 50 MB direct-upload limit. Only if it
+ever crosses that does it have to go through S3.
 
 ## Function
 
-```bash
-aws lambda create-function \
-  --function-name cognito-user-manager \
-  --runtime provided.al2023 \
-  --architectures arm64 \
-  --handler bootstrap \
-  --role "arn:aws:iam::${ACCOUNT}:role/cognito-user-manager" \
-  --zip-file fileb://function.zip \
-  --timeout 30 \
-  --memory-size 512 \
-  --environment 'Variables={COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxxx,COGNITO_CLIENT_ID=xxxxxxxxxxxx,COGNITO_ADMIN_GROUP=admin,SECURE_COOKIES=1}'
-```
+**Lambda → Functions → Create function → Author from scratch**
+
+| Field | Value |
+| --- | --- |
+| Function name | `cognito-user-manager` |
+| Runtime | **Provide your own bootstrap on Amazon Linux 2023** |
+| Architecture | **x86_64** (match the build) |
+| Execution role | **Create a new role with basic Lambda permissions** |
+
+The handler name is not used by an OS-only runtime; it runs whatever `bootstrap`
+is at the root of the zip.
+
+Then, on the function page:
+
+1. **Code → Upload from → .zip file** — pick `function.zip`.
+2. **Configuration → General configuration → Edit** — memory **512 MB**,
+   timeout **30 seconds**.
+3. **Configuration → Environment variables → Edit** — see below.
+
+### IAM role
+
+The role created above only carries `AWSLambdaBasicExecutionRole`, which covers
+CloudWatch Logs and nothing else.
+
+**Configuration → Permissions → Execution role** — follow the role name into
+IAM, then **Add permissions → Create inline policy → JSON**, and paste the
+policy from the README's "Cognito configuration" section with `Resource` scoped
+to the one user pool ARN.
 
 ### Environment variables
 
@@ -110,11 +121,14 @@ The README's table changes on Lambda:
 
 | Variable | On Lambda |
 | --- | --- |
-| `AWS_REGION` | Set by the runtime. Leave it out; `Config::from_env` is satisfied for free |
+| `AWS_REGION` | Set by the runtime, and reserved — the console rejects it. `Config::from_env` is satisfied for free |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Leave out. The default chain picks up the execution role |
 | `BIND_ADDR` | Unused |
 | `SECURE_COOKIES` | **Set to `1`.** See below |
 | `COGNITO_CLIENT_SECRET` | Only if the app client has one; prefer Secrets Manager |
+
+So the list to enter is `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`,
+`COGNITO_ADMIN_GROUP` and `SECURE_COOKIES=1`.
 
 `SECURE_COOKIES=1` is not optional here. `AllViewerExceptHostHeader` forwards
 every viewer header, so a client can send its own `X-Forwarded-Proto: http` on
@@ -124,106 +138,45 @@ entirely, which is right anyway behind a distribution that redirects to HTTPS.
 
 ## Function URL
 
+**Configuration → Function URL → Create function URL**, auth type **AWS_IAM**.
+CORS stays off — the browser only ever talks to the CloudFront domain.
+
 `AWS_IAM` means the URL answers nothing without a SigV4 signature, so it cannot
 be reached directly once CloudFront is in front of it.
 
-```bash
-aws lambda create-function-url-config \
-  --function-name cognito-user-manager \
-  --auth-type AWS_IAM \
-  --query FunctionUrl --output text
-```
-
-Note the host (the URL without `https://` and without the trailing `/`) —
-`cloudfront.json` needs it below.
+Copy the URL. CloudFront wants the host part of it: no `https://`, no trailing
+slash — `xxxxxxxx.lambda-url.ap-northeast-1.on.aws`.
 
 ## CloudFront
 
-```bash
-OAC_ID=$(aws cloudfront create-origin-access-control \
-  --origin-access-control-config '{
-    "Name": "cognito-user-manager",
-    "OriginAccessControlOriginType": "lambda",
-    "SigningBehavior": "always",
-    "SigningProtocol": "sigv4"
-  }' --query 'OriginAccessControl.Id' --output text)
-```
+**CloudFront → Create distribution.**
 
-Write `cloudfront.json`, substituting the function URL host and `$OAC_ID`:
+**Origin**
 
-```json
-{
-  "CallerReference": "cognito-user-manager-1",
-  "Comment": "cognito-user-manager",
-  "Enabled": true,
-  "HttpVersion": "http2and3",
-  "Origins": {
-    "Quantity": 1,
-    "Items": [{
-      "Id": "lambda",
-      "DomainName": "REPLACE.lambda-url.ap-northeast-1.on.aws",
-      "OriginAccessControlId": "REPLACE_OAC_ID",
-      "CustomOriginConfig": {
-        "HTTPPort": 80,
-        "HTTPSPort": 443,
-        "OriginProtocolPolicy": "https-only",
-        "OriginSslProtocols": { "Quantity": 1, "Items": ["TLSv1.2"] }
-      }
-    }]
-  },
-  "DefaultCacheBehavior": {
-    "TargetOriginId": "lambda",
-    "ViewerProtocolPolicy": "redirect-to-https",
-    "AllowedMethods": {
-      "Quantity": 7,
-      "Items": ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"],
-      "CachedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] }
-    },
-    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
-    "OriginRequestPolicyId": "b689b0a8-53d0-40ab-baf2-68738e2966ac"
-  },
-  "CacheBehaviors": {
-    "Quantity": 2,
-    "Items": [
-      {
-        "PathPattern": "/front.*",
-        "TargetOriginId": "lambda",
-        "ViewerProtocolPolicy": "redirect-to-https",
-        "AllowedMethods": {
-          "Quantity": 2,
-          "Items": ["GET", "HEAD"],
-          "CachedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] }
-        },
-        "Compress": true,
-        "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6"
-      },
-      {
-        "PathPattern": "/locales/*",
-        "TargetOriginId": "lambda",
-        "ViewerProtocolPolicy": "redirect-to-https",
-        "AllowedMethods": {
-          "Quantity": 2,
-          "Items": ["GET", "HEAD"],
-          "CachedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] }
-        },
-        "Compress": true,
-        "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6"
-      }
-    ]
-  }
-}
-```
+| Field | Value |
+| --- | --- |
+| Origin domain | the function URL host (type it in if the picker does not offer it) |
+| Origin access | **Origin access control settings**, then **Create new OAC** — origin type *Lambda*, signing behavior *Sign requests* |
+| Protocol | **HTTPS only** |
 
-```bash
-DIST_ID=$(aws cloudfront create-distribution \
-  --distribution-config file://cloudfront.json \
-  --query 'Distribution.Id' --output text)
-```
+**Default cache behavior**
 
-The three managed policy IDs are, in order: **CachingDisabled**,
-**AllViewerExceptHostHeader**, **CachingOptimized**.
+| Field | Value |
+| --- | --- |
+| Viewer protocol policy | **Redirect HTTP to HTTPS** |
+| Allowed methods | **GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE** |
+| Cache policy | **CachingDisabled** |
+| Origin request policy | **AllViewerExceptHostHeader** |
 
-Each is load-bearing:
+Under **Settings**, leave HTTP/3 enabled if offered.
+
+**Two more behaviors** — after the distribution exists, open its **Behaviors**
+tab and **Create behavior** twice, once for path pattern `/front.*` and once for
+`/locales/*`. Both take the same origin, **Redirect HTTP to HTTPS**, allowed
+methods **GET, HEAD**, **Compress objects automatically** on, cache policy
+**CachingOptimized**, and no origin request policy.
+
+The three managed policies are each load-bearing:
 
 - **CachingDisabled on the default behavior.** `/api/*` is per-user and
   cookie-bearing; caching any of it would serve one admin's session to another.
@@ -240,7 +193,13 @@ Each is load-bearing:
 `/front.*` matches Parcel's `front.<hash>.js` and `front.<hash>.css`. If the
 entry point is ever renamed, widen the pattern.
 
-Finally, let the distribution invoke the function:
+### Letting the distribution in
+
+Creating the OAC grants nothing by itself, and this one step genuinely cannot
+be done from the console: AWS does not support editing a function URL's
+resource policy in the Lambda console. Run it from a terminal, or from
+CloudShell in the browser — the distribution page offers a **Copy CLI command**
+button that fills in the IDs for you.
 
 ```bash
 aws lambda add-permission \
@@ -248,23 +207,47 @@ aws lambda add-permission \
   --statement-id cloudfront-oac \
   --action lambda:InvokeFunctionUrl \
   --principal cloudfront.amazonaws.com \
-  --source-arn "arn:aws:cloudfront::${ACCOUNT}:distribution/${DIST_ID}" \
+  --source-arn "arn:aws:cloudfront::<account-id>:distribution/<distribution-id>" \
   --function-url-auth-type AWS_IAM
 ```
+
+Until this exists every request through CloudFront comes back `403`.
+
+### Signing the request body
+
+OAC signs the origin request, but it will not hash a body it is only relaying,
+and Lambda rejects unsigned payloads. The **client** has to send the SHA-256 of
+the body in `X-Amz-Content-Sha256`; without it every `POST`, `PUT` and `PATCH`
+fails with
+
+```
+The request signature we calculated does not match the signature you provided.
+```
+
+while `GET`s keep working, which makes it look like a signing misconfiguration
+rather than a body problem. Sign-in is the first request to hit it.
+
+`payloadHash` in `front/src/api.ts` covers this for the whole app: every call
+through `request()` carries the header, `""` for bodyless calls. It is inert
+anywhere else — the server never reads the header — and it is skipped outside a
+secure context, where `crypto.subtle` does not exist.
+
+Anything that talks to this deployment without going through `api.ts` has to do
+the same. Setting the function URL's auth type to `NONE` also makes the error
+go away, at the price of an origin anyone can invoke directly.
 
 ## Updating
 
 ```bash
 cd front && npm run build && cd ..
-cargo lambda build --release --arm64 --features lambda
+cargo lambda build --release --x86-64 --features lambda
 # repackage as above
-aws lambda update-function-code --function-name cognito-user-manager \
-  --zip-file fileb://function.zip
-
-# Hashed bundles get new names, so only the stable ones need clearing.
-aws cloudfront create-invalidation --distribution-id "$DIST_ID" \
-  --paths '/' '/index.html' '/locales/*'
 ```
+
+**Code → Upload from → .zip file** with the new `function.zip`, then
+**CloudFront → the distribution → Invalidations → Create invalidation** for
+`/`, `/index.html` and `/locales/*`. Hashed bundles get new names, so only the
+stable paths need clearing.
 
 ## Behaviour to expect
 

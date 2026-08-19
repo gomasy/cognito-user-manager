@@ -33,19 +33,48 @@ async function errorMessage(res: Response): Promise<string> {
   return t("api.requestFailed");
 }
 
+/**
+ * CloudFront's origin access control signs the origin request for a Lambda
+ * function URL, but it will not hash a body it is merely relaying, and Lambda
+ * rejects unsigned payloads. So the browser has to supply the hash itself, or
+ * every request carrying one comes back as a signature mismatch. Harmless on
+ * every other host: the server never reads this header.
+ *
+ * Returns undefined outside a secure context, where `crypto.subtle` does not
+ * exist — a plain-http deployment, which is by definition not behind
+ * CloudFront.
+ *
+ * https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html
+ */
+async function payloadHash(payload: string): Promise<string | undefined> {
+  if (!crypto.subtle) return undefined;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(payload),
+  );
+  return Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
 ): Promise<T> {
+  // "" is the payload of a bodyless request, and hashes to the value SigV4
+  // expects for one, so the two cases need no separating.
+  const payload = body === undefined ? "" : JSON.stringify(body);
+  const hash = await payloadHash(payload);
   const res = await fetch(path, {
     method,
     headers: {
       "Content-Type": "application/json",
       // Advertise the UI language so the server localizes its messages to match.
       "X-App-Lang": getLang(),
+      ...(hash === undefined ? {} : { "X-Amz-Content-Sha256": hash }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : payload,
   });
 
   if (res.status === 401) {
