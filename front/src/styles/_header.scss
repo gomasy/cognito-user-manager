@@ -1,0 +1,56 @@
+@use "tokens" as *;
+@use "mixins" as *;
+
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+
+  &__inner {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0.7rem $gap;
+    @include row($gap);
+    flex-wrap: wrap;
+  }
+}
+
+.brand {
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: -0.01em;
+
+  &:hover {
+    text-decoration: none;
+  }
+}
+
+.nav {
+  @include row($gap);
+  flex: 1;
+  font-size: 0.9rem;
+
+  &__link {
+    color: var(--text-dim);
+
+    &--active {
+      color: var(--text);
+      font-weight: 600;
+    }
+  }
+}
+
+.who {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  text-align: right;
+  line-height: 1.35;
+}
+
+.lang {
+  @include row(0.1rem);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}

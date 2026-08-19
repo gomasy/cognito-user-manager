@@ -1,0 +1,76 @@
+@use "tokens" as *;
+@use "mixins" as *;
+
+.card {
+  @include card;
+  padding: $gap;
+  box-shadow: var(--shadow);
+  margin-bottom: $gap;
+
+  > .hint:first-of-type {
+    margin-top: -0.4rem;
+    margin-bottom: $gap * 0.75;
+  }
+
+  &--danger {
+    border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  }
+}
+
+.alert {
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.88rem;
+  margin: 0 0 $gap;
+  border: 1px solid transparent;
+
+  &--error {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  }
+
+  &--warn {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+  }
+}
+
+.badge {
+  @include badge;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  margin-left: 4px;
+
+  &--ok {
+    background: var(--success-bg);
+    color: var(--success);
+    border-color: transparent;
+  }
+
+  &--off {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border-color: transparent;
+  }
+
+  &--warn {
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-color: transparent;
+  }
+}
+
+.tag {
+  @include badge;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  margin-left: 6px;
+}
+
+.verify {
+  margin-top: $gap * 0.75;
+}

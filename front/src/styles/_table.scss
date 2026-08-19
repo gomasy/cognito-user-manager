@@ -1,0 +1,39 @@
+@use "tokens" as *;
+@use "mixins" as *;
+
+.table-wrap {
+  @include card;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: var(--surface-2);
+}
+
+tbody tr {
+  &:last-child td {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: var(--surface-2);
+  }
+}

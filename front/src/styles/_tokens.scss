@@ -1,0 +1,47 @@
+// Every rule reads the custom properties, so switching to the dark scheme is a
+// matter of redefining the values below rather than duplicating any rule. The
+// Sass variables are the ones the partials do arithmetic on, which a custom
+// property cannot do at build time.
+
+$gap:    12px;
+$gap-lg: 20px;
+
+:root {
+  --bg:         #f6f7f9;
+  --surface:    #ffffff;
+  --surface-2:  #f2f4f7;
+  --border:     #dfe3e8;
+  --text:       #16191d;
+  --text-dim:   #646b75;
+  --accent:     #3358d4;
+  --accent-on:  #ffffff;
+  --danger:     #c2333a;
+  --danger-bg:  #fdeced;
+  --success:    #1a7f4b;
+  --success-bg: #e8f6ee;
+  --warn:       #8a5a00;
+  --warn-bg:    #fdf3e0;
+  --radius:     10px;
+  --radius-sm:  8px;
+  --shadow: 0 1px 2px rgb(16 20 26 / 6%), 0 4px 12px rgb(16 20 26 / 4%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:         #101317;
+    --surface:    #181c22;
+    --surface-2:  #212730;
+    --border:     #2c333d;
+    --text:       #e8eaed;
+    --text-dim:   #99a1ad;
+    --accent:     #6b8afd;
+    --accent-on:  #0b0e12;
+    --danger:     #ff8086;
+    --danger-bg:  #33191c;
+    --success:    #63d19a;
+    --success-bg: #12271d;
+    --warn:       #e8b661;
+    --warn-bg:    #2b2113;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  }
+}

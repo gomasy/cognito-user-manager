@@ -1,0 +1,23 @@
+{
+  "name": "cognito-user-manager-frontend",
+  "private": true,
+  "source": "src/index.html",
+  "scripts": {
+    "clean": "rm -rf dist .parcel-cache",
+    "dev": "concurrently -n rust,parcel -c cyan,yellow \"cd .. && cargo run\" \"npm run clean && parcel watch\"",
+    "build": "npm run clean && parcel build --no-source-maps",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@parcel/transformer-sass": "^2.16.4",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "concurrently": "^10.0.5",
+    "parcel": "^2.16.4",
+    "typescript": "^7.0.0"
+  }
+}

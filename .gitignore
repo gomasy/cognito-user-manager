@@ -1,0 +1,6 @@
+/target
+/front/dist
+/front/node_modules
+/front/.parcel-cache
+.env
+.DS_Store

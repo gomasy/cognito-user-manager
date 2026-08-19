@@ -1,0 +1,10 @@
+// Foundations, then shared parts, then per-screen parts. Each partial also
+// @uses what it needs; a module is only ever emitted once.
+@use "tokens";
+@use "base";
+@use "controls";
+@use "cards";
+@use "header";
+@use "table";
+@use "auth";
+@use "toast";
