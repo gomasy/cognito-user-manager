@@ -157,7 +157,6 @@ fn secret_hash_candidates(state: &AppState, previous_id_token: Option<&str>) -> 
     candidates
 }
 
-/// Exchanges the refresh token for new tokens.
 async fn refresh(
     state: &AppState,
     refresh_token: &str,

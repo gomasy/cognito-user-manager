@@ -19,8 +19,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Builds the shared state a router is given: an AWS client plus the two
-    /// caches, all of which outlive any one request.
     pub async fn new(config: Arc<Config>) -> Self {
         Self {
             cognito: aws::client(&config).await,

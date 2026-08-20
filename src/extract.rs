@@ -151,7 +151,6 @@ mod tests {
             &headers(&[("x-forwarded-proto", "https")]),
             &Uri::from_static("/api/session")
         ));
-        // A chain appends, so the client-facing scheme is the first entry.
         assert!(request_is_https(
             &headers(&[("x-forwarded-proto", "https, http")]),
             &Uri::from_static("/")

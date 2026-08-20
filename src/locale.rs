@@ -14,8 +14,6 @@ pub fn fallback() -> &'static str {
         .unwrap_or("en")
 }
 
-/// Resolve a client-advertised language code to a locale we ship, falling back
-/// to the built-in default.
 pub fn or_default(code: Option<&str>) -> String {
     code.and_then(resolve)
         .unwrap_or_else(|| fallback().to_string())

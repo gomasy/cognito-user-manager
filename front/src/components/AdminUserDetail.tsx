@@ -41,8 +41,7 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
     void load();
   }, [load]);
 
-  // Answers whether the action went through, so a caller can hold off on
-  // anything that only makes sense once it did.
+  // Answers whether the action went through, for callers that must wait on it.
   const run = async (action: () => Promise<{ message: string }>, reload = true) => {
     setBusy(true);
     try {
@@ -212,8 +211,7 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
         busy={busy}
         onToggle={() => run(() => api.setEnabled(user.username, !user.enabled))}
         onDelete={async () => {
-          // A refused delete leaves the user right there, so leaving the page
-          // would contradict the error that was just raised.
+          // A refused delete leaves the user there, so the page has to stay too.
           if (await run(() => api.deleteUser(user.username), false)) navigate("/admin");
         }}
       />

@@ -134,8 +134,7 @@ pub async fn create(
     }
 
     // A suppressed invitation is never delivered, so a password made up here
-    // would be known to nobody at all and the account unusable until it was
-    // reset. Handing it back is the only way it can reach the new user; when
+    // would otherwise be known to nobody and the account unreachable. When
     // Cognito does mail it out there is nothing to disclose.
     let disclosed = body.suppress_message.then_some(generated).flatten();
 
@@ -425,7 +424,6 @@ fn is_self(session: &Session, user: &UserDetail) -> bool {
 }
 
 /// Guard for destructive actions on the signed-in admin, to avoid lockout.
-/// Reading the user first is what makes the check see through an alias.
 async fn deny_self(
     state: &AppState,
     session: &Session,

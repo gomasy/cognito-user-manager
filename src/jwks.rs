@@ -127,7 +127,6 @@ impl Jwks {
         found.ok_or_else(|| format!("no signing key for kid {kid}"))
     }
 
-    /// Verifies an ID token and returns its claims.
     pub async fn verify_id_token(&self, token: &str) -> Result<IdClaims, String> {
         let header = decode_header(token).map_err(|error| format!("malformed token: {error}"))?;
         let kid = header.kid.ok_or("token carries no kid")?;

@@ -101,8 +101,8 @@ where
 
     match known(&code) {
         Some((key, status)) => ApiError::new(status, t!(key, locale = lang)),
-        // Nothing of ours to say: pass Cognito's own message along, and treat
-        // an unrecognised failure as coming from upstream rather than the caller.
+        // An unrecognised failure is not the caller's to fix, and Cognito's own
+        // message is the best wording there is.
         None => ApiError::new(
             StatusCode::BAD_GATEWAY,
             error
@@ -147,8 +147,6 @@ mod tests {
         }
     }
 
-    /// A pool or credential problem is ours, not the caller's, even though it
-    /// gets wording of its own.
     #[test]
     fn an_upstream_failure_stays_a_bad_gateway() {
         for code in ["UnrecognizedClientException", "ResourceNotFoundException"] {
