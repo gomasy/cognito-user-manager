@@ -23,7 +23,9 @@ impl Config {
             region: required("AWS_REGION")?,
             user_pool_id: required("COGNITO_USER_POOL_ID")?,
             client_id: required("COGNITO_CLIENT_ID")?,
-            client_secret: env::var("COGNITO_CLIENT_SECRET").ok().filter(|v| !v.is_empty()),
+            client_secret: env::var("COGNITO_CLIENT_SECRET")
+                .ok()
+                .filter(|v| !v.is_empty()),
             admin_group: env::var("COGNITO_ADMIN_GROUP")
                 .ok()
                 .filter(|v| !v.is_empty())

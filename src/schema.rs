@@ -174,7 +174,11 @@ impl SchemaCache {
             .filter_map(to_field)
             .filter(|field| !HIDDEN.contains(&field.name.as_str()))
             .collect();
-        fields.sort_by(|a, b| a.is_custom.cmp(&b.is_custom).then_with(|| a.name.cmp(&b.name)));
+        fields.sort_by(|a, b| {
+            a.is_custom
+                .cmp(&b.is_custom)
+                .then_with(|| a.name.cmp(&b.name))
+        });
 
         let info = PoolInfo {
             id: state.config.user_pool_id.clone(),

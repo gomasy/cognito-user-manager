@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use serde::Deserialize;
 
 use crate::config::Config;
@@ -303,8 +303,8 @@ mod tests {
     #[test]
     fn a_valid_id_token_verifies() {
         let token = sign(claims("id", ISSUER, CLIENT_ID, now() + 3600));
-        let verified = verify_with(&decoding_key(), &accepted(), &token)
-            .expect("token should verify");
+        let verified =
+            verify_with(&decoding_key(), &accepted(), &token).expect("token should verify");
 
         assert_eq!(verified.username.as_deref(), Some("taro"));
         assert_eq!(verified.groups, vec!["admin".to_string()]);
@@ -319,7 +319,12 @@ mod tests {
 
     #[test]
     fn a_foreign_issuer_or_audience_is_rejected() {
-        let wrong_issuer = sign(claims("id", "https://evil.example.com", CLIENT_ID, now() + 3600));
+        let wrong_issuer = sign(claims(
+            "id",
+            "https://evil.example.com",
+            CLIENT_ID,
+            now() + 3600,
+        ));
         assert!(verify_with(&decoding_key(), &accepted(), &wrong_issuer).is_err());
 
         // Same shape as the alternate host but a different pool.
@@ -374,9 +379,7 @@ mod tests {
         let other = sign(claims("id", ISSUER, CLIENT_ID, now() + 7200));
         let other_parts: Vec<&str> = other.split('.').collect();
         parts[2] = other_parts[2];
-        assert!(
-            verify_with(&decoding_key(), &accepted(), &parts.join(".")).is_err()
-        );
+        assert!(verify_with(&decoding_key(), &accepted(), &parts.join(".")).is_err());
     }
 }
 

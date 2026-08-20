@@ -59,7 +59,11 @@ pub async fn pool(
         name: pool.name.clone(),
         username_is_email: pool.username_is_email,
         self_editable: pool.self_editable(),
-        admin_visible: if admin { pool.admin_visible() } else { Vec::new() },
+        admin_visible: if admin {
+            pool.admin_visible()
+        } else {
+            Vec::new()
+        },
         editable: if admin { pool.editable() } else { Vec::new() },
         // Only admins assign groups, and only they may read the list.
         groups: if admin {

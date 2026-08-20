@@ -44,7 +44,11 @@ fn validate(field: &AttributeField, value: &str, lang: &str) -> Result<(), ApiEr
     match field.data_type {
         DataType::Number => {
             let numeric: f64 = value.parse().map_err(|_| {
-                ApiError::bad_request(t!("error_number_expected", locale = lang, attr = &field.name))
+                ApiError::bad_request(t!(
+                    "error_number_expected",
+                    locale = lang,
+                    attr = &field.name
+                ))
             })?;
             if let Some(min) = field.min_value
                 && numeric < min as f64
@@ -120,9 +124,7 @@ pub fn diff(
             .name(&field.name)
             .value(value)
             .build()
-            .map_err(|_| {
-                ApiError::bad_request(t!("error_invalid_parameter", locale = lang))
-            })?;
+            .map_err(|_| ApiError::bad_request(t!("error_invalid_parameter", locale = lang)))?;
         attributes.push(attribute);
     }
 
@@ -172,14 +174,22 @@ mod tests {
     }
 
     fn values(pairs: &[(&str, &str)]) -> Values {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     fn written(changes: &Changes) -> Vec<(String, String)> {
         changes
             .attributes
             .iter()
-            .map(|a| (a.name().to_string(), a.value().unwrap_or_default().to_string()))
+            .map(|a| {
+                (
+                    a.name().to_string(),
+                    a.value().unwrap_or_default().to_string(),
+                )
+            })
             .collect()
     }
 
@@ -206,8 +216,13 @@ mod tests {
 
     #[test]
     fn null_on_an_unset_attribute_does_nothing() {
-        let changes = diff(&patch(&[("nickname", None)]), &fields(), &Values::new(), "en")
-            .expect("diff");
+        let changes = diff(
+            &patch(&[("nickname", None)]),
+            &fields(),
+            &Values::new(),
+            "en",
+        )
+        .expect("diff");
         assert!(changes.is_empty());
     }
 
@@ -229,15 +244,39 @@ mod tests {
             "en",
         )
         .expect("diff");
-        assert_eq!(written(&changes), vec![("email_verified".into(), "true".into())]);
+        assert_eq!(
+            written(&changes),
+            vec![("email_verified".into(), "true".into())]
+        );
     }
 
     #[test]
     fn numbers_are_range_checked() {
-        assert!(diff(&patch(&[("custom:age", Some("200"))]), &fields(), &Values::new(), "en").is_err());
-        assert!(diff(&patch(&[("custom:age", Some("abc"))]), &fields(), &Values::new(), "en").is_err());
-        let changes = diff(&patch(&[("custom:age", Some("42"))]), &fields(), &Values::new(), "en")
-            .expect("diff");
+        assert!(
+            diff(
+                &patch(&[("custom:age", Some("200"))]),
+                &fields(),
+                &Values::new(),
+                "en"
+            )
+            .is_err()
+        );
+        assert!(
+            diff(
+                &patch(&[("custom:age", Some("abc"))]),
+                &fields(),
+                &Values::new(),
+                "en"
+            )
+            .is_err()
+        );
+        let changes = diff(
+            &patch(&[("custom:age", Some("42"))]),
+            &fields(),
+            &Values::new(),
+            "en",
+        )
+        .expect("diff");
         assert_eq!(written(&changes), vec![("custom:age".into(), "42".into())]);
     }
 
@@ -247,7 +286,10 @@ mod tests {
         // naming it: only fields the caller was given are considered.
         let allowed = vec![field("nickname", DataType::String, false)];
         let changes = diff(
-            &patch(&[("email", Some("evil@example.com")), ("nickname", Some("taro"))]),
+            &patch(&[
+                ("email", Some("evil@example.com")),
+                ("nickname", Some("taro")),
+            ]),
             &allowed,
             &Values::new(),
             "en",

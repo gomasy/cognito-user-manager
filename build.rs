@@ -2,8 +2,14 @@ use std::process::Command;
 
 fn main() {
     // In environments without .git the values are passed in as env vars.
-    println!("cargo:rustc-env=GIT_HASH={}", env_or_git("GIT_HASH", &["rev-parse", "--short", "HEAD"]));
-    println!("cargo:rustc-env=BUILD_DATE={}", env_or_git("BUILD_DATE", &["log", "-1", "--format=%cs"]));
+    println!(
+        "cargo:rustc-env=GIT_HASH={}",
+        env_or_git("GIT_HASH", &["rev-parse", "--short", "HEAD"])
+    );
+    println!(
+        "cargo:rustc-env=BUILD_DATE={}",
+        env_or_git("BUILD_DATE", &["log", "-1", "--format=%cs"])
+    );
 
     println!("cargo:rerun-if-env-changed=GIT_HASH");
     println!("cargo:rerun-if-env-changed=BUILD_DATE");
@@ -27,5 +33,7 @@ fn git(args: &[&str]) -> Option<String> {
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {
-    value.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    value
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }

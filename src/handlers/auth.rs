@@ -126,7 +126,10 @@ fn handle(
     }
 
     let (Some(name), Some(challenge_session)) = (response.challenge_name, response.session) else {
-        return Err(ApiError::bad_request(t!("error_login_failed", locale = lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_login_failed",
+            locale = lang
+        )));
     };
     let name = name.as_str().to_string();
     if !SUPPORTED.contains(&name.as_str()) {
@@ -150,7 +153,10 @@ fn handle(
             .map(|item| item.trim_start_matches("userAttributes.").to_string())
             .collect(),
         mfa_options: parse_json_array(response.parameters.get("MFAS_CAN_CHOOSE")),
-        destination: response.parameters.get("CODE_DELIVERY_DESTINATION").cloned(),
+        destination: response
+            .parameters
+            .get("CODE_DELIVERY_DESTINATION")
+            .cloned(),
         name,
         session: challenge_session,
     };
@@ -170,10 +176,16 @@ pub async fn login(
 ) -> ApiResult<Json<AuthOutcome>> {
     let username = body.username.trim();
     if username.is_empty() {
-        return Err(ApiError::bad_request(t!("error_username_required", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_username_required",
+            locale = &lang
+        )));
     }
     if body.password.is_empty() {
-        return Err(ApiError::bad_request(t!("error_password_required", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_password_required",
+            locale = &lang
+        )));
     }
 
     let mut request = state
@@ -188,7 +200,10 @@ pub async fn login(
         request = request.auth_parameters("SECRET_HASH", hash);
     }
 
-    let response = request.send().await.map_err(|error| cognito(error, &lang))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
     handle(
         &cookies,
         secure,
@@ -221,10 +236,16 @@ fn responses_for(
         "NEW_PASSWORD_REQUIRED" => {
             let password = body.new_password.as_deref().unwrap_or_default();
             if password.is_empty() {
-                return Err(ApiError::bad_request(t!("error_password_required", locale = lang)));
+                return Err(ApiError::bad_request(t!(
+                    "error_password_required",
+                    locale = lang
+                )));
             }
             if Some(password) != body.confirm_password.as_deref() {
-                return Err(ApiError::bad_request(t!("error_password_mismatch", locale = lang)));
+                return Err(ApiError::bad_request(t!(
+                    "error_password_mismatch",
+                    locale = lang
+                )));
             }
             responses.insert("NEW_PASSWORD".to_string(), password.to_string());
             for attribute in &challenge.required_attributes {
@@ -248,7 +269,11 @@ fn responses_for(
         "SELECT_MFA_TYPE" => {
             responses.insert(
                 "ANSWER".to_string(),
-                body.mfa_type.as_deref().unwrap_or_default().trim().to_string(),
+                body.mfa_type
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
             );
         }
         other => {
@@ -270,7 +295,10 @@ pub async fn challenge(
     Json(body): Json<ChallengeRequest>,
 ) -> ApiResult<Json<AuthOutcome>> {
     let Some(challenge) = read_challenge(&cookies) else {
-        return Err(ApiError::bad_request(t!("error_challenge_expired", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_challenge_expired",
+            locale = &lang
+        )));
     };
     let responses = responses_for(&state, &challenge, &body, &lang)?;
 

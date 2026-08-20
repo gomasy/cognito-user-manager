@@ -72,7 +72,10 @@ fn request_is_https(headers: &HeaderMap, uri: &Uri) -> bool {
 impl FromRequestParts<AppState> for SecureCookies {
     type Rejection = Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         Ok(Self(secure_for(parts, state)))
     }
 }
@@ -86,7 +89,10 @@ async fn cookies(parts: &mut Parts, state: &AppState) -> Result<Cookies, ApiErro
 impl FromRequestParts<AppState> for Session {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let lang = lang_of(parts);
         let secure = secure_for(parts, state);
         let jar = cookies(parts, state).await?;
@@ -102,7 +108,10 @@ pub struct AdminSession(pub Session);
 impl FromRequestParts<AppState> for AdminSession {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let lang = lang_of(parts);
         let session = Session::from_request_parts(parts, state).await?;
         if session.is_admin {
@@ -130,7 +139,10 @@ mod tests {
     fn plain_http_is_not_treated_as_secure() {
         // The local development case: a Secure cookie here would be dropped by
         // the client and the session would appear to vanish after sign-in.
-        assert!(!request_is_https(&HeaderMap::new(), &Uri::from_static("/api/session")));
+        assert!(!request_is_https(
+            &HeaderMap::new(),
+            &Uri::from_static("/api/session")
+        ));
     }
 
     #[test]

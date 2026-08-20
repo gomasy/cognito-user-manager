@@ -35,7 +35,12 @@ pub async fn update(
 ) -> ApiResult<Json<Value>> {
     let pool = state.schema.get(&state, &lang).await?;
     let profile = users::profile(&state, &session, &lang).await?;
-    let changes = attributes::diff(&body.attributes, &pool.self_editable(), &profile.attributes, &lang)?;
+    let changes = attributes::diff(
+        &body.attributes,
+        &pool.self_editable(),
+        &profile.attributes,
+        &lang,
+    )?;
 
     if changes.is_empty() {
         return Ok(message(t!("msg_no_changes", locale = &lang)));
@@ -98,10 +103,16 @@ pub async fn change_password(
     Json(body): Json<PasswordRequest>,
 ) -> ApiResult<Json<Value>> {
     if body.current_password.is_empty() || body.new_password.is_empty() {
-        return Err(ApiError::bad_request(t!("error_password_required", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_password_required",
+            locale = &lang
+        )));
     }
     if body.new_password != body.confirm_password {
-        return Err(ApiError::bad_request(t!("error_password_mismatch", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_password_mismatch",
+            locale = &lang
+        )));
     }
 
     state
@@ -130,7 +141,10 @@ pub async fn send_code(
 ) -> ApiResult<Json<Value>> {
     let attribute = body.attribute.trim();
     if attribute.is_empty() {
-        return Err(ApiError::bad_request(t!("error_verification_input", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_verification_input",
+            locale = &lang
+        )));
     }
 
     let response = state
@@ -143,7 +157,10 @@ pub async fn send_code(
         .map_err(|error| cognito(error, &lang))?;
 
     Ok(message(
-        match response.code_delivery_details().and_then(|d| d.destination()) {
+        match response
+            .code_delivery_details()
+            .and_then(|d| d.destination())
+        {
             Some(destination) => t!("msg_code_sent", locale = &lang, destination = destination),
             None => t!("msg_code_sent_generic", locale = &lang),
         },
@@ -164,7 +181,10 @@ pub async fn verify(
 ) -> ApiResult<Json<Value>> {
     let (attribute, code) = (body.attribute.trim(), body.code.trim());
     if attribute.is_empty() || code.is_empty() {
-        return Err(ApiError::bad_request(t!("error_verification_input", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_verification_input",
+            locale = &lang
+        )));
     }
 
     state

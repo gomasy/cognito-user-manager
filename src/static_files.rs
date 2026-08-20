@@ -45,11 +45,9 @@ fn spa_shell(index: String) -> MethodRouter<()> {
                 return StatusCode::NOT_FOUND.into_response();
             }
             match tokio::fs::read(&index).await {
-                Ok(bytes) => (
-                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-                    bytes,
-                )
-                    .into_response(),
+                Ok(bytes) => {
+                    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], bytes).into_response()
+                }
                 Err(error) => {
                     tracing::error!(%index, ?error, "app shell is missing; run the frontend build");
                     StatusCode::NOT_FOUND.into_response()

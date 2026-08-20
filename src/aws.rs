@@ -1,6 +1,6 @@
 use aws_config::BehaviorVersion;
 use aws_sdk_cognitoidentityprovider::Client;
-use aws_smithy_http_client::tls::{rustls_provider::CryptoMode, Provider};
+use aws_smithy_http_client::tls::{Provider, rustls_provider::CryptoMode};
 
 use crate::config::Config;
 

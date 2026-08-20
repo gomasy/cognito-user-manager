@@ -76,12 +76,20 @@ pub async fn create(
 ) -> ApiResult<Json<Value>> {
     let username = body.username.trim();
     if username.is_empty() {
-        return Err(ApiError::bad_request(t!("error_username_required", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_username_required",
+            locale = &lang
+        )));
     }
 
     let pool = state.schema.get(&state, &lang).await?;
     // Immutable attributes can still be set at creation time.
-    let changes = attributes::diff(&body.attributes, &pool.admin_visible(), &Values::new(), &lang)?;
+    let changes = attributes::diff(
+        &body.attributes,
+        &pool.admin_visible(),
+        &Values::new(),
+        &lang,
+    )?;
 
     let mut request = state
         .cognito
@@ -97,7 +105,10 @@ pub async fn create(
     } else {
         request = request.desired_delivery_mediums(DeliveryMediumType::Email);
     }
-    request.send().await.map_err(|error| cognito(error, &lang))?;
+    request
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
 
     for group in &body.groups {
         add_to_group(&state, username, group, &lang).await?;
@@ -209,7 +220,10 @@ pub async fn set_password(
     Json(body): Json<PasswordRequest>,
 ) -> ApiResult<Json<Value>> {
     if body.password.is_empty() {
-        return Err(ApiError::bad_request(t!("error_password_required", locale = &lang)));
+        return Err(ApiError::bad_request(t!(
+            "error_password_required",
+            locale = &lang
+        )));
     }
 
     state

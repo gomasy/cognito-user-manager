@@ -61,7 +61,11 @@ mod tests {
             "ユーザーが見つかりません。"
         );
         assert_eq!(
-            t!("msg_code_sent", locale = "en", destination = "a@example.com"),
+            t!(
+                "msg_code_sent",
+                locale = "en",
+                destination = "a@example.com"
+            ),
             "A confirmation code was sent to a@example.com."
         );
     }

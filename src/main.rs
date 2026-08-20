@@ -54,8 +54,14 @@ fn api_router() -> Router<AppState> {
             "/api/account",
             get(handlers::account::profile).patch(handlers::account::update),
         )
-        .route("/api/account/password", post(handlers::account::change_password))
-        .route("/api/account/verify/send", post(handlers::account::send_code))
+        .route(
+            "/api/account/password",
+            post(handlers::account::change_password),
+        )
+        .route(
+            "/api/account/verify/send",
+            post(handlers::account::send_code),
+        )
         .route("/api/account/verify", post(handlers::account::verify))
         .route(
             "/api/admin/users",
@@ -67,15 +73,30 @@ fn api_router() -> Router<AppState> {
                 .patch(handlers::admin::update)
                 .delete(handlers::admin::delete),
         )
-        .route("/api/admin/users/{username}/groups", put(handlers::admin::set_groups))
-        .route("/api/admin/users/{username}/password", post(handlers::admin::set_password))
+        .route(
+            "/api/admin/users/{username}/groups",
+            put(handlers::admin::set_groups),
+        )
+        .route(
+            "/api/admin/users/{username}/password",
+            post(handlers::admin::set_password),
+        )
         .route(
             "/api/admin/users/{username}/password/reset",
             post(handlers::admin::reset_password),
         )
-        .route("/api/admin/users/{username}/enabled", post(handlers::admin::set_enabled))
-        .route("/api/admin/users/{username}/signout", post(handlers::admin::sign_out))
-        .route("/api/admin/users/{username}/invite", post(handlers::admin::resend_invite))
+        .route(
+            "/api/admin/users/{username}/enabled",
+            post(handlers::admin::set_enabled),
+        )
+        .route(
+            "/api/admin/users/{username}/signout",
+            post(handlers::admin::sign_out),
+        )
+        .route(
+            "/api/admin/users/{username}/invite",
+            post(handlers::admin::resend_invite),
+        )
 }
 
 /// Resolves once the process is asked to stop, so in-flight requests get to
@@ -108,10 +129,12 @@ fn on_lambda() -> bool {
 async fn boot() -> (Router, Arc<Config>) {
     let _ = dotenvy::dotenv();
 
-    let logging = tracing_subscriber::fmt().with_target(false).with_env_filter(
-        tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "cognito_user_manager=info,warn".into()),
-    );
+    let logging = tracing_subscriber::fmt()
+        .with_target(false)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "cognito_user_manager=info,warn".into()),
+        );
     if on_lambda() {
         // CloudWatch stamps every line with its own timestamp and renders no ANSI.
         logging.without_time().with_ansi(false).init();

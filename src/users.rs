@@ -237,7 +237,11 @@ mod live_tests {
     async fn reads_the_pool_schema_and_users() {
         let state = state().await;
 
-        let pool = state.schema.get(&state, "en").await.expect("describe user pool");
+        let pool = state
+            .schema
+            .get(&state, "en")
+            .await
+            .expect("describe user pool");
         println!(
             "pool={} fields={} custom={} editable={} selfEditable={}",
             pool.name.as_deref().unwrap_or(&pool.id),
@@ -248,10 +252,14 @@ mod live_tests {
         );
         assert!(!pool.fields.is_empty(), "schema should expose attributes");
 
-        let groups = schema::list_group_names(&state, "en").await.expect("list groups");
+        let groups = schema::list_group_names(&state, "en")
+            .await
+            .expect("list groups");
         println!("groups={groups:?}");
 
-        let page = list(&state, "", "email", 5, None, "en").await.expect("list users");
+        let page = list(&state, "", "email", 5, None, "en")
+            .await
+            .expect("list users");
         println!("listed {} user(s)", page.users.len());
 
         let Some(first) = page.users.first() else {

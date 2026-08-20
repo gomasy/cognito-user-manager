@@ -1,7 +1,7 @@
 use aws_sdk_cognitoidentityprovider::types::{AuthFlowType, AuthenticationResultType};
 use base64::Engine;
 use serde_json::Value;
-use tower_cookies::cookie::{time::Duration, SameSite};
+use tower_cookies::cookie::{SameSite, time::Duration};
 use tower_cookies::{Cookie, Cookies};
 
 use crate::state::AppState;
@@ -50,7 +50,13 @@ pub fn save_tokens(cookies: &Cookies, secure: bool, result: &AuthenticationResul
         set_cookie(cookies, secure, ID_COOKIE, token.to_string(), expires_in);
     }
     if let Some(token) = result.access_token() {
-        set_cookie(cookies, secure, ACCESS_COOKIE, token.to_string(), expires_in);
+        set_cookie(
+            cookies,
+            secure,
+            ACCESS_COOKIE,
+            token.to_string(),
+            expires_in,
+        );
     }
     if let Some(token) = result.refresh_token() {
         set_cookie(
@@ -221,7 +227,12 @@ mod tests {
             .layer(CookieManagerLayer::new());
 
         let response = router
-            .oneshot(Request::builder().uri("/").body(Body::empty()).expect("request"))
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
             .await
             .expect("response");
 
@@ -253,7 +264,17 @@ mod tests {
     /// as a sign-in that succeeds and is then immediately unauthenticated.
     #[tokio::test]
     async fn the_secure_attribute_follows_the_setting() {
-        assert!(set_cookie_header(true).await.iter().all(|c| c.contains("Secure")));
-        assert!(set_cookie_header(false).await.iter().all(|c| !c.contains("Secure")));
+        assert!(
+            set_cookie_header(true)
+                .await
+                .iter()
+                .all(|c| c.contains("Secure"))
+        );
+        assert!(
+            set_cookie_header(false)
+                .await
+                .iter()
+                .all(|c| !c.contains("Secure"))
+        );
     }
 }

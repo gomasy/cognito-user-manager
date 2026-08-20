@@ -31,7 +31,10 @@ impl ApiError {
     }
 
     pub fn unauthorized(lang: &str) -> Self {
-        Self::new(StatusCode::UNAUTHORIZED, t!("error_unauthorized", locale = lang))
+        Self::new(
+            StatusCode::UNAUTHORIZED,
+            t!("error_unauthorized", locale = lang),
+        )
     }
 
     pub fn forbidden(lang: &str) -> Self {
@@ -72,14 +75,14 @@ fn key_for(code: &str) -> Option<&'static str> {
 /// caller's input is a 400 so the frontend can tell it apart from an outage.
 fn status_for(code: &str) -> StatusCode {
     match code {
-        "NotAuthorizedException" | "UserNotConfirmedException" | "PasswordResetRequiredException" => {
-            StatusCode::UNAUTHORIZED
-        }
+        "NotAuthorizedException"
+        | "UserNotConfirmedException"
+        | "PasswordResetRequiredException" => StatusCode::UNAUTHORIZED,
         "UserNotFoundException" => StatusCode::NOT_FOUND,
         "AccessDeniedException" => StatusCode::FORBIDDEN,
-        "TooManyRequestsException" | "LimitExceededException" | "TooManyFailedAttemptsException" => {
-            StatusCode::TOO_MANY_REQUESTS
-        }
+        "TooManyRequestsException"
+        | "LimitExceededException"
+        | "TooManyFailedAttemptsException" => StatusCode::TOO_MANY_REQUESTS,
         "CodeMismatchException"
         | "ExpiredCodeException"
         | "InvalidPasswordException"
