@@ -210,7 +210,7 @@ pub async fn set_groups(
     let admin_group = &state.config.admin_group;
 
     // Losing the admin group would lock the caller out of this screen.
-    if session.is_self(&username)
+    if is_self(&session, &user)
         && user.groups.contains(admin_group)
         && !body.groups.contains(admin_group)
     {
@@ -312,7 +312,7 @@ pub async fn set_enabled(
         return Ok(message(t!("msg_user_enabled", locale = &lang)));
     }
 
-    deny_self(&session, &username, "error_self_disable", &lang)?;
+    deny_self(&state, &session, &username, "error_self_disable", &lang).await?;
     state
         .cognito
         .admin_disable_user()
@@ -369,7 +369,7 @@ pub async fn delete(
     AdminSession(session): AdminSession,
     Path(username): Path<String>,
 ) -> ApiResult<Json<Value>> {
-    deny_self(&session, &username, "error_self_delete", &lang)?;
+    deny_self(&state, &session, &username, "error_self_delete", &lang).await?;
 
     state
         .cognito
@@ -414,9 +414,26 @@ async fn remove_from_group(
     Ok(())
 }
 
+/// Whether a user Cognito handed back is the signed-in admin.
+///
+/// The path may name a user by an alias — an email address, in a pool that
+/// signs in by email — and every admin API resolves one. Comparing the string
+/// that was asked for would therefore miss, so the sub Cognito resolved it to
+/// is what decides.
+fn is_self(session: &Session, user: &UserDetail) -> bool {
+    session.is_self(&user.username) || user.attributes.get("sub") == Some(&session.sub)
+}
+
 /// Guard for destructive actions on the signed-in admin, to avoid lockout.
-fn deny_self(session: &Session, username: &str, key: &str, lang: &str) -> ApiResult<()> {
-    if session.is_self(username) {
+/// Reading the user first is what makes the check see through an alias.
+async fn deny_self(
+    state: &AppState,
+    session: &Session,
+    username: &str,
+    key: &str,
+    lang: &str,
+) -> ApiResult<()> {
+    if is_self(session, &require_user(state, username, lang).await?) {
         Err(ApiError::bad_request(t!(key, locale = lang)))
     } else {
         Ok(())
