@@ -33,7 +33,7 @@ ureq = { version = "3", features = ["json"] }
 
 [dev-dependencies]
 jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto", "use_pem"] }
-tower = { version = "0.5", features = ["util"] }
+tower = { version = "0.5.3", features = ["util"] }
 
 [lints.clippy]
 # No request may be able to take the process down. Tests are exempt via clippy.toml.
