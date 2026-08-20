@@ -41,14 +41,18 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
     void load();
   }, [load]);
 
+  // Answers whether the action went through, so a caller can hold off on
+  // anything that only makes sense once it did.
   const run = async (action: () => Promise<{ message: string }>, reload = true) => {
     setBusy(true);
     try {
       const { message } = await action();
       notify(message);
       if (reload) await load();
+      return true;
     } catch (e) {
       notify(e instanceof Error ? e.message : String(e), "error");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -208,8 +212,9 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
         busy={busy}
         onToggle={() => run(() => api.setEnabled(user.username, !user.enabled))}
         onDelete={async () => {
-          await run(() => api.deleteUser(user.username), false);
-          navigate("/admin");
+          // A refused delete leaves the user right there, so leaving the page
+          // would contradict the error that was just raised.
+          if (await run(() => api.deleteUser(user.username), false)) navigate("/admin");
         }}
       />
     </main>
