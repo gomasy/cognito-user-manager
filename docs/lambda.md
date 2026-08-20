@@ -84,6 +84,11 @@ result is what `/api/public` reports and the sign-in screen shows.
 The zip stays well under the console's 50 MB direct-upload limit. Only if it
 ever crosses that does it have to go through S3.
 
+Tagging a release does all of the above: `.github/workflows/release.yml` runs
+these same steps for both architectures and attaches `function-x86_64.zip` and
+`function-arm64.zip` to the GitHub release, so a deployment can start at
+**Upload from → .zip file** with a downloaded asset.
+
 ## Function
 
 **Lambda → Functions → Create function → Author from scratch**

@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/check.yml
+
+  build:
+    needs:
+      - checks
+    # cargo-lambda cross-compiles through zig, so both architectures come off
+    # the same x86_64 runner. Its linker also targets an old glibc, which the
+    # runner's own toolchain does not: a binary linked here against Ubuntu's
+    # glibc would not start on Amazon Linux 2023.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            flag: --x86-64
+          - arch: arm64
+            flag: --arm64
+    steps:
+      # build.rs derives the version string from the git hash and commit date,
+      # so the checkout has to keep .git or it degrades to "unknown".
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - name: Install Rust toolchain with Cargo Lambda
+        uses: moonrepo/setup-rust@v1
+        with:
+          bins: cargo-lambda
+          cache-extra-identifier: ${{ matrix.arch }}
+      - name: Install Zig toolchain
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+          cache-key: ${{ matrix.arch }}
+      - name: Build frontend
+        working-directory: front
+        run: |
+          npm ci
+          npm run build
+      - name: Build
+        run: cargo lambda build --release --locked --features lambda ${{ matrix.flag }}
+      # The binary reads front/dist and front/locales relative to its working
+      # directory, which on Lambda is /var/task, so the zip keeps that layout.
+      # locales/*.yml is left out: rust_i18n embeds those at build time.
+      - name: Package
+        run: |
+          mkdir -p pkg/front
+          cp target/lambda/cognito-user-manager/bootstrap pkg/
+          cp -r front/dist front/locales pkg/front/
+          (cd pkg && zip -qr "../function-${{ matrix.arch }}.zip" .)
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: function-${{ matrix.arch }}
+          path: function-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/functions
+          pattern: function-*
+          merge-multiple: true
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ runner.temp }}/functions/function-*.zip
+          generate_release_notes: true

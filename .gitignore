@@ -4,3 +4,5 @@
 /front/.parcel-cache
 .env
 .DS_Store
+/pkg
+/function*.zip
