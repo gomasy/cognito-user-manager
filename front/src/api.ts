@@ -138,7 +138,10 @@ export const api = {
     temporaryPassword: string;
     suppressMessage: boolean;
     groups: string[];
-  }) => request<MessageResponse & { username: string }>("POST", "/api/admin/users", payload),
+  }) =>
+    request<
+      MessageResponse & { username: string; temporaryPassword: string | null }
+    >("POST", "/api/admin/users", payload),
   user: (username: string) => request<UserDetail>("GET", userPath(username)),
   updateUser: (username: string, attributes: AttributePatch) =>
     request<MessageResponse>("PATCH", userPath(username), { attributes }),

@@ -96,13 +96,20 @@ pub async fn create(
     // has an email address or phone number to deliver it to, so an empty field
     // is filled in here instead of being left out of the request. A passwordless
     // pool is the exception: there the user is meant to be created without one.
-    let temporary_password = match body.temporary_password.trim() {
-        "" if !pool.password_sign_in => None,
-        "" => Some(password::generate(&pool.password_policy).map_err(|error| {
-            tracing::error!(%error, "no system randomness for a temporary password");
-            ApiError::internal(&lang)
-        })?),
-        given => Some(given.to_string()),
+    let given = body.temporary_password.trim();
+    let generated = match given {
+        "" if pool.password_sign_in => {
+            Some(password::generate(&pool.password_policy).map_err(|error| {
+                tracing::error!(%error, "no system randomness for a temporary password");
+                ApiError::internal(&lang)
+            })?)
+        }
+        _ => None,
+    };
+    let temporary_password = if given.is_empty() {
+        generated.clone()
+    } else {
+        Some(given.to_string())
     };
 
     let mut request = state
@@ -126,9 +133,16 @@ pub async fn create(
         add_to_group(&state, username, group, &lang).await?;
     }
 
+    // A suppressed invitation is never delivered, so a password made up here
+    // would be known to nobody at all and the account unusable until it was
+    // reset. Handing it back is the only way it can reach the new user; when
+    // Cognito does mail it out there is nothing to disclose.
+    let disclosed = body.suppress_message.then_some(generated).flatten();
+
     Ok(Json(serde_json::json!({
         "message": t!("msg_user_created", locale = &lang),
         "username": username,
+        "temporaryPassword": disclosed,
     })))
 }
 

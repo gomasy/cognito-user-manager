@@ -21,26 +21,59 @@ export function AdminUserCreate({ fields, groups, usernameIsEmail }: Props) {
   const [suppressMessage, setSuppressMessage] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState<{ username: string; password: string } | null>(null);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
     try {
-      const created = await api.createUser({
+      const result = await api.createUser({
         username,
         attributes: toPatch(fields, draft),
         temporaryPassword,
         suppressMessage,
         groups: selected,
       });
-      notify(created.message);
-      navigate(`/admin/users/${encodeURIComponent(created.username)}`);
+      notify(result.message);
+      // A generated password comes back only when the invitation was
+      // suppressed, so nothing else will ever deliver it to the new user.
+      if (result.temporaryPassword) {
+        setCreated({ username: result.username, password: result.temporaryPassword });
+      } else {
+        navigate(`/admin/users/${encodeURIComponent(result.username)}`);
+      }
     } catch (e) {
       notify(e instanceof Error ? e.message : String(e), "error");
     } finally {
       setBusy(false);
     }
   };
+
+  if (created) {
+    return (
+      <main className="page page--narrow">
+        <header className="page__header">
+          <h1>{t("create.done")}</h1>
+        </header>
+        <div className="card">
+          <dl className="dl">
+            <dt>{t("user.username")}</dt>
+            <dd className="mono">{created.username}</dd>
+            <dt>{t("create.temporaryPassword")}</dt>
+            <dd className="mono">{created.password}</dd>
+          </dl>
+          <p className="alert alert--warn">{t("create.showOnce")}</p>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => navigate(`/admin/users/${encodeURIComponent(created.username)}`)}
+          >
+            {t("create.openUser")}
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="page page--narrow">
