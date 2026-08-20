@@ -15,7 +15,7 @@ aws-sdk-cognitoidentityprovider = { version = "1.128.0", default-features = fals
 aws-smithy-http-client = { version = "1.4.0", features = ["rustls-ring"] }
 aws-smithy-types = "1.6.2"
 axum = "0.8"
-base64 = "0.23"
+base64 = "0.23.1"
 dotenvy = "0.15"
 hmac = "0.13"
 jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
