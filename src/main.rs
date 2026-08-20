@@ -6,6 +6,7 @@ mod extract;
 mod handlers;
 mod jwks;
 mod locale;
+mod password;
 mod schema;
 mod session;
 mod state;

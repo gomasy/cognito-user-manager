@@ -71,7 +71,7 @@
   "create.initialPassword": "初期パスワード",
   "create.submit": "ユーザーを作成",
   "create.suppress": "招待メールを送信しない（SUPPRESS）",
-  "create.temporaryHint": "空欄にすると Cognito が自動生成します。初回ログイン時に変更が必要です。",
+  "create.temporaryHint": "空欄にするとランダムなパスワードを自動生成します。初回ログイン時に変更が必要です。",
   "create.temporaryPassword": "仮パスワード",
   "create.title": "ユーザーを作成",
   "create.usernameEmail": "このユーザープールはメールアドレスをサインイン名として使います。",

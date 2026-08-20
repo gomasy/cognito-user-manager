@@ -1,10 +1,13 @@
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
-use aws_sdk_cognitoidentityprovider::types::{AttributeDataType, SchemaAttributeType};
+use aws_sdk_cognitoidentityprovider::types::{
+    AttributeDataType, AuthFactorType, SchemaAttributeType,
+};
 use serde::Serialize;
 
 use crate::error::{ApiResult, cognito};
+use crate::password;
 use crate::state::AppState;
 
 const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
@@ -75,6 +78,14 @@ pub struct PoolInfo {
     pub fields: Vec<AttributeField>,
     /// True when the pool signs users in by email rather than a username.
     pub username_is_email: bool,
+    /// Server-side only: it drives the generated temporary passwords and no
+    /// screen has any use for it.
+    #[serde(skip)]
+    pub password_policy: password::Policy,
+    /// False only for a pool that signs users in without passwords at all,
+    /// where Cognito rejects a new user that comes with one.
+    #[serde(skip)]
+    pub password_sign_in: bool,
 }
 
 impl PoolInfo {
@@ -166,6 +177,7 @@ impl SchemaCache {
             .await
             .map_err(|error| cognito(error, lang))?;
         let pool = response.user_pool();
+        let policies = pool.and_then(|p| p.policies());
 
         let mut fields: Vec<AttributeField> = pool
             .map(|p| p.schema_attributes())
@@ -189,6 +201,18 @@ impl SchemaCache {
                 .unwrap_or_default()
                 .iter()
                 .any(|attribute| attribute.as_str() == "email"),
+            password_policy: policies
+                .and_then(|p| p.password_policy())
+                .map(password::Policy::from)
+                .unwrap_or_default(),
+            password_sign_in: policies
+                .and_then(|p| p.sign_in_policy())
+                .map(|policy| policy.allowed_first_auth_factors())
+                // An empty list means the pool never opted into choice-based
+                // authentication, which leaves passwords as the only factor.
+                .is_none_or(|factors| {
+                    factors.is_empty() || factors.contains(&AuthFactorType::Password)
+                }),
         };
 
         if let Ok(mut guard) = self.inner.write() {

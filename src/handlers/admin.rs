@@ -8,6 +8,7 @@ use serde_json::Value;
 use crate::attributes::{self, Patch, Values};
 use crate::error::{ApiError, ApiResult, cognito};
 use crate::extract::{AdminSession, Lang};
+use crate::password;
 use crate::session::Session;
 use crate::state::AppState;
 use crate::users::{self, UserDetail, UserPage};
@@ -91,15 +92,26 @@ pub async fn create(
         &lang,
     )?;
 
+    // Cognito only makes up a temporary password of its own when the new user
+    // has an email address or phone number to deliver it to, so an empty field
+    // is filled in here instead of being left out of the request. A passwordless
+    // pool is the exception: there the user is meant to be created without one.
+    let temporary_password = match body.temporary_password.trim() {
+        "" if !pool.password_sign_in => None,
+        "" => Some(password::generate(&pool.password_policy).map_err(|error| {
+            tracing::error!(%error, "no system randomness for a temporary password");
+            ApiError::internal(&lang)
+        })?),
+        given => Some(given.to_string()),
+    };
+
     let mut request = state
         .cognito
         .admin_create_user()
         .user_pool_id(&state.config.user_pool_id)
         .username(username)
+        .set_temporary_password(temporary_password)
         .set_user_attributes(Some(changes.attributes));
-    if !body.temporary_password.trim().is_empty() {
-        request = request.temporary_password(body.temporary_password.trim());
-    }
     if body.suppress_message {
         request = request.message_action(MessageActionType::Suppress);
     } else {

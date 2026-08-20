@@ -37,6 +37,13 @@ impl ApiError {
         )
     }
 
+    pub fn internal(lang: &str) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            t!("error_unexpected", locale = lang),
+        )
+    }
+
     pub fn forbidden(lang: &str) -> Self {
         Self::new(StatusCode::FORBIDDEN, t!("error_forbidden", locale = lang))
     }

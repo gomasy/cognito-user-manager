@@ -71,7 +71,7 @@
   "create.initialPassword": "Initial password",
   "create.submit": "Create user",
   "create.suppress": "Do not send the invitation email (SUPPRESS)",
-  "create.temporaryHint": "Leave empty to let Cognito generate one. It must be changed at first sign-in.",
+  "create.temporaryHint": "Leave empty to generate a random one. It must be changed at first sign-in.",
   "create.temporaryPassword": "Temporary password",
   "create.title": "Create user",
   "create.usernameEmail": "This pool signs users in by email address.",
