@@ -142,16 +142,6 @@ pub async fn detail(state: &AppState, username: &str, lang: &str) -> ApiResult<O
         Err(error) => return Err(cognito(error, lang)),
     };
 
-    let groups = state
-        .cognito
-        .admin_list_groups_for_user()
-        .user_pool_id(&state.config.user_pool_id)
-        .username(username)
-        .limit(60)
-        .send()
-        .await
-        .map_err(|error| cognito(error, lang))?;
-
     Ok(Some(UserDetail {
         username: user.username().to_string(),
         enabled: user.enabled(),
@@ -159,14 +149,42 @@ pub async fn detail(state: &AppState, username: &str, lang: &str) -> ApiResult<O
         created_at: timestamp(user.user_create_date()),
         updated_at: timestamp(user.user_last_modified_date()),
         attributes: to_values(user.user_attributes()),
-        groups: groups
-            .groups()
-            .iter()
-            .filter_map(|group| group.group_name().map(str::to_string))
-            .collect(),
+        groups: groups_of(state, username, lang).await?,
         mfa: user.user_mfa_setting_list().to_vec(),
         preferred_mfa: user.preferred_mfa_setting().map(str::to_string),
     }))
+}
+
+/// Every group the user belongs to, following pagination.
+///
+/// The membership editor removes any group it does not see here, so a page
+/// left unread would look like a group the user is not in.
+async fn groups_of(state: &AppState, username: &str, lang: &str) -> ApiResult<Vec<String>> {
+    let mut names = Vec::new();
+    let mut next_token: Option<String> = None;
+    loop {
+        let response = state
+            .cognito
+            .admin_list_groups_for_user()
+            .user_pool_id(&state.config.user_pool_id)
+            .username(username)
+            .limit(60)
+            .set_next_token(next_token)
+            .send()
+            .await
+            .map_err(|error| cognito(error, lang))?;
+
+        names.extend(
+            response
+                .groups()
+                .iter()
+                .filter_map(|group| group.group_name().map(str::to_string)),
+        );
+        next_token = response.next_token().map(str::to_string);
+        if next_token.is_none() {
+            return Ok(names);
+        }
+    }
 }
 
 /// The signed-in user's own profile, read with their access token.
