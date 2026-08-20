@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use aws_sdk_cognitoidentityprovider::operation::admin_initiate_auth::AdminInitiateAuthOutput;
+use aws_sdk_cognitoidentityprovider::operation::admin_respond_to_auth_challenge::AdminRespondToAuthChallengeOutput;
 use aws_sdk_cognitoidentityprovider::types::{
     AuthFlowType, AuthenticationResultType, ChallengeNameType,
 };
@@ -105,12 +107,33 @@ fn parse_json_array(value: Option<&String>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The part of an auth call's output that decides what happens next. Both
+/// Cognito operations answer with the same four fields under different types.
 struct AuthResponse {
     result: Option<AuthenticationResultType>,
     challenge_name: Option<ChallengeNameType>,
     session: Option<String>,
     parameters: HashMap<String, String>,
 }
+
+/// The two outputs are separate generated types that happen to carry the same
+/// fields, so the conversion is written once and applied to both.
+macro_rules! auth_response_from {
+    ($($output:ty),+ $(,)?) => {$(
+        impl From<$output> for AuthResponse {
+            fn from(output: $output) -> Self {
+                Self {
+                    result: output.authentication_result,
+                    challenge_name: output.challenge_name,
+                    session: output.session,
+                    parameters: output.challenge_parameters.unwrap_or_default(),
+                }
+            }
+        }
+    )+};
+}
+
+auth_response_from!(AdminInitiateAuthOutput, AdminRespondToAuthChallengeOutput);
 
 /// Stores tokens on success, otherwise records the next challenge.
 fn handle(
@@ -204,19 +227,7 @@ pub async fn login(
         .send()
         .await
         .map_err(|error| cognito(error, &lang))?;
-    handle(
-        &cookies,
-        secure,
-        AuthResponse {
-            result: response.authentication_result,
-            challenge_name: response.challenge_name,
-            session: response.session,
-            parameters: response.challenge_parameters.unwrap_or_default(),
-        },
-        username,
-        &lang,
-    )
-    .map(Json)
+    handle(&cookies, secure, response.into(), username, &lang).map(Json)
 }
 
 fn responses_for(
@@ -319,12 +330,7 @@ pub async fn challenge(
     handle(
         &cookies,
         secure,
-        AuthResponse {
-            result: response.authentication_result,
-            challenge_name: response.challenge_name,
-            session: response.session,
-            parameters: response.challenge_parameters.unwrap_or_default(),
-        },
+        response.into(),
         &challenge.username,
         &lang,
     )
