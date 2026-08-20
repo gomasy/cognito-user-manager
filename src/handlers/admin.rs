@@ -416,9 +416,10 @@ async fn remove_from_group(
 /// Whether a user Cognito handed back is the signed-in admin.
 ///
 /// The path may name a user by an alias — an email address, in a pool that
-/// signs in by email — and every admin API resolves one. Comparing the string
-/// that was asked for would therefore miss, so the sub Cognito resolved it to
-/// is what decides.
+/// signs in by email — and every admin API resolves one, so matching on the
+/// string that was asked for would miss. The comparison is against the account
+/// Cognito resolved it to: its username, or its sub for a token that carried no
+/// `cognito:username` and left the session naming itself by sub.
 fn is_self(session: &Session, user: &UserDetail) -> bool {
     session.is_self(&user.username) || user.attributes.get("sub") == Some(&session.sub)
 }
@@ -435,5 +436,54 @@ async fn deny_self(
         Err(ApiError::bad_request(t!(key, locale = lang)))
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session(username: &str, sub: &str) -> Session {
+        Session {
+            username: username.to_string(),
+            sub: sub.to_string(),
+            email: None,
+            groups: Vec::new(),
+            is_admin: true,
+            access_token: String::new(),
+        }
+    }
+
+    fn user(username: &str, sub: &str) -> UserDetail {
+        UserDetail {
+            username: username.to_string(),
+            enabled: true,
+            status: None,
+            created_at: None,
+            updated_at: None,
+            attributes: [("sub".to_string(), sub.to_string())].into(),
+            groups: Vec::new(),
+            mfa: Vec::new(),
+            preferred_mfa: None,
+        }
+    }
+
+    /// Reaching your own account as /admin/users/me@example.com has to be
+    /// refused just as naming yourself outright is: Cognito resolves the alias,
+    /// so the user handed back is the caller whatever the path said.
+    #[test]
+    fn an_alias_does_not_hide_the_caller_from_the_guards() {
+        let caller = session("8b1f0c2a", "8b1f0c2a");
+        assert!(is_self(&caller, &user("8b1f0c2a", "8b1f0c2a")));
+        assert!(!is_self(&caller, &user("d4e5f6a7", "d4e5f6a7")));
+    }
+
+    /// Without `cognito:username` the session names itself by sub, which then
+    /// has to be matched against the user's own sub attribute.
+    #[test]
+    fn a_session_known_only_by_its_sub_still_matches() {
+        let caller = session("8b1f0c2a", "8b1f0c2a");
+        assert!(is_self(&caller, &user("alice", "8b1f0c2a")));
+        assert!(!is_self(&caller, &user("alice", "d4e5f6a7")));
     }
 }
