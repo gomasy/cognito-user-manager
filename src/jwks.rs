@@ -408,12 +408,7 @@ mod live_sign_in {
         };
 
         let config = Arc::new(Config::from_env().expect("config"));
-        let state = AppState {
-            cognito: crate::aws::client(&config).await,
-            jwks: Arc::new(Jwks::new(&config)),
-            schema: Arc::new(crate::schema::SchemaCache::new()),
-            config: config.clone(),
-        };
+        let state = AppState::new(config.clone()).await;
 
         let mut request = state
             .cognito

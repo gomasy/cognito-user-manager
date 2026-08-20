@@ -34,8 +34,6 @@ use tokio::signal::unix::{SignalKind, signal};
 use tower_cookies::CookieManagerLayer;
 
 use crate::config::Config;
-use crate::jwks::Jwks;
-use crate::schema::SchemaCache;
 use crate::state::AppState;
 
 pub fn die(message: impl std::fmt::Display) -> ! {
@@ -144,12 +142,7 @@ async fn boot() -> (Router, Arc<Config>) {
     }
 
     let config = Arc::new(Config::from_env().unwrap_or_else(|error| die(error)));
-    let state = AppState {
-        cognito: aws::client(&config).await,
-        jwks: Arc::new(Jwks::new(&config)),
-        schema: Arc::new(SchemaCache::new()),
-        config: config.clone(),
-    };
+    let state = AppState::new(config.clone()).await;
 
     let app = api_router()
         // Merged after the API so the shell and catalogs stay reachable
@@ -217,12 +210,7 @@ mod tests {
             bind: "127.0.0.1:0".into(),
             secure_cookies: Some(true),
         });
-        let state = AppState {
-            cognito: aws::client(&config).await,
-            jwks: Arc::new(Jwks::new(&config)),
-            schema: Arc::new(SchemaCache::new()),
-            config,
-        };
+        let state = AppState::new(config).await;
         let app = api_router()
             .layer(CookieManagerLayer::new())
             .with_state(state);

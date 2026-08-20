@@ -217,19 +217,12 @@ mod tests {
 mod live_tests {
     use super::*;
     use crate::config::Config;
-    use crate::jwks::Jwks;
-    use crate::schema::{self, SchemaCache};
+    use crate::schema;
     use std::sync::Arc;
 
     async fn state() -> AppState {
         let _ = dotenvy::dotenv();
-        let config = Arc::new(Config::from_env().expect("config"));
-        AppState {
-            cognito: crate::aws::client(&config).await,
-            jwks: Arc::new(Jwks::new(&config)),
-            schema: Arc::new(SchemaCache::new()),
-            config,
-        }
+        AppState::new(Arc::new(Config::from_env().expect("config"))).await
     }
 
     #[tokio::test]
