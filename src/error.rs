@@ -55,49 +55,40 @@ impl IntoResponse for ApiError {
     }
 }
 
-/// The i18n key for a Cognito error code, or `None` when we have no wording.
-fn key_for(code: &str) -> Option<&'static str> {
+/// How a Cognito error code is answered: the wording to show and the status to
+/// send with it. Both come out of the same arm, so a code cannot end up with
+/// wording in one list and a status in another.
+///
+/// Anything the caller's input caused is a 4xx, so the frontend can tell it
+/// apart from an outage. `None` means we have no wording of our own.
+fn known(code: &str) -> Option<(&'static str, StatusCode)> {
+    use StatusCode as Http;
+
     Some(match code {
-        "NotAuthorizedException" => "error_not_authorized",
-        "UserNotFoundException" => "error_user_not_found",
-        "UserNotConfirmedException" => "error_user_not_confirmed",
-        "PasswordResetRequiredException" => "error_password_reset_required",
-        "CodeMismatchException" => "error_code_mismatch",
-        "ExpiredCodeException" => "error_expired_code",
-        "InvalidPasswordException" => "error_invalid_password",
-        "InvalidParameterException" => "error_invalid_parameter",
-        "UsernameExistsException" => "error_username_exists",
-        "AliasExistsException" => "error_alias_exists",
-        "LimitExceededException" => "error_limit_exceeded",
-        "TooManyRequestsException" => "error_too_many_requests",
-        "TooManyFailedAttemptsException" => "error_too_many_failed_attempts",
-        "AccessDeniedException" => "error_access_denied",
-        "UnrecognizedClientException" | "InvalidSignatureException" => "error_bad_credentials",
-        "ResourceNotFoundException" => "error_pool_not_found",
+        "NotAuthorizedException" => ("error_not_authorized", Http::UNAUTHORIZED),
+        "UserNotConfirmedException" => ("error_user_not_confirmed", Http::UNAUTHORIZED),
+        "PasswordResetRequiredException" => ("error_password_reset_required", Http::UNAUTHORIZED),
+        "UserNotFoundException" => ("error_user_not_found", Http::NOT_FOUND),
+        "AccessDeniedException" => ("error_access_denied", Http::FORBIDDEN),
+        "TooManyRequestsException" => ("error_too_many_requests", Http::TOO_MANY_REQUESTS),
+        "LimitExceededException" => ("error_limit_exceeded", Http::TOO_MANY_REQUESTS),
+        "TooManyFailedAttemptsException" => {
+            ("error_too_many_failed_attempts", Http::TOO_MANY_REQUESTS)
+        }
+        "CodeMismatchException" => ("error_code_mismatch", Http::BAD_REQUEST),
+        "ExpiredCodeException" => ("error_expired_code", Http::BAD_REQUEST),
+        "InvalidPasswordException" => ("error_invalid_password", Http::BAD_REQUEST),
+        "InvalidParameterException" => ("error_invalid_parameter", Http::BAD_REQUEST),
+        "UsernameExistsException" => ("error_username_exists", Http::BAD_REQUEST),
+        "AliasExistsException" => ("error_alias_exists", Http::BAD_REQUEST),
+        // Our own credentials or app client are wrong, which the caller can do
+        // nothing about: their own wording, but still an upstream failure.
+        "UnrecognizedClientException" | "InvalidSignatureException" => {
+            ("error_bad_credentials", Http::BAD_GATEWAY)
+        }
+        "ResourceNotFoundException" => ("error_pool_not_found", Http::BAD_GATEWAY),
         _ => return None,
     })
-}
-
-/// HTTP status to answer with for a Cognito error code. Anything caused by the
-/// caller's input is a 400 so the frontend can tell it apart from an outage.
-fn status_for(code: &str) -> StatusCode {
-    match code {
-        "NotAuthorizedException"
-        | "UserNotConfirmedException"
-        | "PasswordResetRequiredException" => StatusCode::UNAUTHORIZED,
-        "UserNotFoundException" => StatusCode::NOT_FOUND,
-        "AccessDeniedException" => StatusCode::FORBIDDEN,
-        "TooManyRequestsException"
-        | "LimitExceededException"
-        | "TooManyFailedAttemptsException" => StatusCode::TOO_MANY_REQUESTS,
-        "CodeMismatchException"
-        | "ExpiredCodeException"
-        | "InvalidPasswordException"
-        | "InvalidParameterException"
-        | "UsernameExistsException"
-        | "AliasExistsException" => StatusCode::BAD_REQUEST,
-        _ => StatusCode::BAD_GATEWAY,
-    }
 }
 
 /// Turns an SDK error into an ApiError, logging the detail.
@@ -108,12 +99,67 @@ where
     let code = error.code().unwrap_or_default().to_string();
     tracing::warn!(code = %code, detail = ?error, "cognito call failed");
 
-    let message = match key_for(&code) {
-        Some(key) => t!(key, locale = lang).to_string(),
-        None => error
-            .message()
-            .map(str::to_string)
-            .unwrap_or_else(|| t!("error_unexpected", locale = lang).to_string()),
-    };
-    ApiError::new(status_for(&code), message)
+    match known(&code) {
+        Some((key, status)) => ApiError::new(status, t!(key, locale = lang)),
+        // Nothing of ours to say: pass Cognito's own message along, and treat
+        // an unrecognised failure as coming from upstream rather than the caller.
+        None => ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            error
+                .message()
+                .map(str::to_string)
+                .unwrap_or_else(|| t!("error_unexpected", locale = lang).to_string()),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_known_code_carries_both_wording_and_a_status() {
+        assert_eq!(
+            known("UserNotFoundException"),
+            Some(("error_user_not_found", StatusCode::NOT_FOUND))
+        );
+        assert_eq!(
+            known("UnrecognizedClientException"),
+            known("InvalidSignatureException")
+        );
+    }
+
+    /// The frontend tells a rejected input apart from an outage by the status,
+    /// so anything the caller caused has to stay a 4xx.
+    #[test]
+    fn what_the_caller_caused_stays_a_client_error() {
+        for code in [
+            "NotAuthorizedException",
+            "UserNotFoundException",
+            "AccessDeniedException",
+            "TooManyRequestsException",
+            "CodeMismatchException",
+            "InvalidPasswordException",
+            "UsernameExistsException",
+        ] {
+            let (_, status) = known(code).expect("code should have wording");
+            assert!(status.is_client_error(), "{code} answered {status}");
+        }
+    }
+
+    /// A pool or credential problem is ours, not the caller's, even though it
+    /// gets wording of its own.
+    #[test]
+    fn an_upstream_failure_stays_a_bad_gateway() {
+        for code in ["UnrecognizedClientException", "ResourceNotFoundException"] {
+            let (_, status) = known(code).expect("code should have wording");
+            assert_eq!(status, StatusCode::BAD_GATEWAY, "{code}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_code_has_no_wording_of_ours() {
+        assert!(known("SomeFutureException").is_none());
+        assert!(known("").is_none());
+    }
 }
