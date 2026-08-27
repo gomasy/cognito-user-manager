@@ -161,9 +161,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-cognitoidentityprovider"
-version = "1.130.0"
+version = "1.131.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a53e5b404a1278087642d2fe9f788d5037ec343c5445a93bda90100ca66f30c2"
+checksum = "7bf69f5941c02b71dc45950f053fc8132e069cd5eac4d1d2094775b6cdeb8a01"
 dependencies = [
  "arc-swap",
  "aws-credential-types",
