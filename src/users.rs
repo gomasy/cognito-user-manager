@@ -1,16 +1,19 @@
 use aws_sdk_cognitoidentityprovider::error::SdkError;
 use aws_sdk_cognitoidentityprovider::operation::admin_get_user::AdminGetUserError;
+use aws_sdk_cognitoidentityprovider::types::UserType;
 use aws_smithy_types::DateTime;
 use aws_smithy_types::date_time::Format;
 use serde::Serialize;
 
+use rust_i18n::t;
+
 use crate::attributes::{Values, to_values};
-use crate::error::{ApiResult, cognito};
+use crate::error::{ApiError, ApiResult, cognito};
 use crate::session::Session;
 use crate::state::AppState;
 
 /// RFC 3339 so the frontend can format it in the user's locale.
-fn timestamp(value: Option<&DateTime>) -> Option<String> {
+pub fn timestamp(value: Option<&DateTime>) -> Option<String> {
     value.and_then(|date| date.fmt(Format::DateTime).ok())
 }
 
@@ -22,6 +25,28 @@ pub struct UserSummary {
     pub status: Option<String>,
     pub created_at: Option<String>,
     pub attributes: Values,
+}
+
+/// The row shape of both user lists: the search, and a group's members.
+///
+/// `None` for a user Cognito returned without a username, which every action
+/// on the row would need and which would only show as a link to nowhere.
+fn summary(user: &UserType) -> Option<UserSummary> {
+    Some(UserSummary {
+        username: user.username()?.to_string(),
+        enabled: user.enabled(),
+        status: user.user_status().map(|status| status.as_str().to_string()),
+        created_at: timestamp(user.user_create_date()),
+        attributes: to_values(user.attributes()),
+    })
+}
+
+/// One page of users, as both the search and a group's member list show them.
+pub fn page(users: &[UserType], next_token: Option<&str>) -> UserPage {
+    UserPage {
+        users: users.iter().filter_map(summary).collect(),
+        next_token: next_token.map(str::to_string),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,20 +133,7 @@ pub async fn list(
 
     let response = request.send().await.map_err(|error| cognito(error, lang))?;
 
-    Ok(UserPage {
-        users: response
-            .users()
-            .iter()
-            .map(|user| UserSummary {
-                username: user.username().unwrap_or_default().to_string(),
-                enabled: user.enabled(),
-                status: user.user_status().map(|status| status.as_str().to_string()),
-                created_at: timestamp(user.user_create_date()),
-                attributes: to_values(user.attributes()),
-            })
-            .collect(),
-        next_token: response.pagination_token().map(str::to_string),
-    })
+    Ok(page(response.users(), response.pagination_token()))
 }
 
 pub async fn detail(state: &AppState, username: &str, lang: &str) -> ApiResult<Option<UserDetail>> {
@@ -153,6 +165,25 @@ pub async fn detail(state: &AppState, username: &str, lang: &str) -> ApiResult<O
         mfa: user.user_mfa_setting_list().to_vec(),
         preferred_mfa: user.preferred_mfa_setting().map(str::to_string),
     }))
+}
+
+/// The same as `detail`, for the callers that have nothing to do without the
+/// user and would only repeat the same 404 themselves.
+pub async fn require(state: &AppState, username: &str, lang: &str) -> ApiResult<UserDetail> {
+    detail(state, username, lang)
+        .await?
+        .ok_or_else(|| ApiError::not_found(t!("error_user_not_found", locale = lang)))
+}
+
+/// Whether a user Cognito handed back is the signed-in caller.
+///
+/// A path may name a user by an alias — an email address, in a pool that signs
+/// in by email — and every admin API resolves one, so matching on the string
+/// that was asked for would miss. The comparison is against the account Cognito
+/// resolved it to: its username, or its sub for a token that carried no
+/// `cognito:username` and left the session naming itself by sub.
+pub fn is_self(session: &Session, user: &UserDetail) -> bool {
+    session.is_self(&user.username) || user.attributes.get("sub") == Some(&session.sub)
 }
 
 /// Every group the user belongs to, following pagination.
@@ -210,6 +241,65 @@ pub async fn profile(state: &AppState, session: &Session, lang: &str) -> ApiResu
 mod tests {
     use super::*;
 
+    fn session(username: &str, sub: &str) -> Session {
+        Session {
+            username: username.to_string(),
+            sub: sub.to_string(),
+            email: None,
+            groups: Vec::new(),
+            is_admin: true,
+            access_token: String::new(),
+        }
+    }
+
+    fn user(username: &str, sub: &str) -> UserDetail {
+        UserDetail {
+            username: username.to_string(),
+            enabled: true,
+            status: None,
+            created_at: None,
+            updated_at: None,
+            attributes: [("sub".to_string(), sub.to_string())].into(),
+            groups: Vec::new(),
+            mfa: Vec::new(),
+            preferred_mfa: None,
+        }
+    }
+
+    /// Reaching your own account as /admin/users/me@example.com has to be
+    /// refused just as naming yourself outright is: Cognito resolves the alias,
+    /// so the user handed back is the caller whatever the path said.
+    #[test]
+    fn an_alias_does_not_hide_the_caller_from_the_guards() {
+        let caller = session("8b1f0c2a", "8b1f0c2a");
+        assert!(is_self(&caller, &user("8b1f0c2a", "8b1f0c2a")));
+        assert!(!is_self(&caller, &user("d4e5f6a7", "d4e5f6a7")));
+    }
+
+    /// Without `cognito:username` the session names itself by sub, which then
+    /// has to be matched against the user's own sub attribute.
+    #[test]
+    fn a_session_known_only_by_its_sub_still_matches() {
+        let caller = session("8b1f0c2a", "8b1f0c2a");
+        assert!(is_self(&caller, &user("alice", "8b1f0c2a")));
+        assert!(!is_self(&caller, &user("alice", "d4e5f6a7")));
+    }
+
+    /// Cognito models a username as optional, and every action on a row needs
+    /// one: a row without it would link nowhere and act on nobody.
+    #[test]
+    fn a_row_without_a_username_is_left_out() {
+        let rows = [
+            UserType::builder().username("alice").build(),
+            UserType::builder().build(),
+        ];
+        let page = page(&rows, Some("next"));
+
+        assert_eq!(page.users.len(), 1);
+        assert_eq!(page.users[0].username, "alice");
+        assert_eq!(page.next_token.as_deref(), Some("next"));
+    }
+
     #[test]
     fn only_an_allowed_field_reaches_the_filter() {
         assert_eq!(search_field(Some("phone_number")), "phone_number");
@@ -235,7 +325,7 @@ mod tests {
 mod live_tests {
     use super::*;
     use crate::config::Config;
-    use crate::schema;
+    use crate::groups;
     use std::sync::Arc;
 
     async fn state() -> AppState {
@@ -263,9 +353,7 @@ mod live_tests {
         );
         assert!(!pool.fields.is_empty(), "schema should expose attributes");
 
-        let groups = schema::list_group_names(&state, "en")
-            .await
-            .expect("list groups");
+        let groups = groups::names(&state, "en").await.expect("list groups");
         println!("groups={groups:?}");
 
         let page = list(&state, "", "email", 5, None, "en")

@@ -3,6 +3,7 @@ mod aws;
 mod config;
 mod error;
 mod extract;
+mod groups;
 mod handlers;
 mod jwks;
 mod locale;
@@ -29,7 +30,7 @@ use std::process;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use tokio::signal::unix::{SignalKind, signal};
 use tower_cookies::CookieManagerLayer;
 
@@ -95,6 +96,22 @@ fn api_router() -> Router<AppState> {
         .route(
             "/api/admin/users/{username}/invite",
             post(handlers::admin::resend_invite),
+        )
+        .route(
+            "/api/admin/groups",
+            get(handlers::groups::list).post(handlers::groups::create),
+        )
+        .route(
+            "/api/admin/groups/{group}",
+            get(handlers::groups::detail).delete(handlers::groups::delete),
+        )
+        .route(
+            "/api/admin/groups/{group}/users",
+            get(handlers::groups::members).post(handlers::groups::add_member),
+        )
+        .route(
+            "/api/admin/groups/{group}/users/{username}",
+            delete(handlers::groups::remove_member),
         )
 }
 
@@ -221,6 +238,9 @@ mod tests {
             "/api/account",
             "/api/admin/users",
             "/api/admin/users/someone",
+            "/api/admin/groups",
+            "/api/admin/groups/staff",
+            "/api/admin/groups/staff/users",
         ] {
             let request = Request::builder()
                 .uri(path)

@@ -80,6 +80,7 @@ fn known(code: &str) -> Option<(&'static str, StatusCode)> {
         "InvalidPasswordException" => ("error_invalid_password", Http::BAD_REQUEST),
         "InvalidParameterException" => ("error_invalid_parameter", Http::BAD_REQUEST),
         "UsernameExistsException" => ("error_username_exists", Http::BAD_REQUEST),
+        "GroupExistsException" => ("error_group_exists", Http::BAD_REQUEST),
         "AliasExistsException" => ("error_alias_exists", Http::BAD_REQUEST),
         // Our own credentials or app client are wrong, which the caller can do
         // nothing about: their own wording, but still an upstream failure.
@@ -113,6 +114,23 @@ where
     }
 }
 
+/// Like `cognito`, but with wording of your own for `ResourceNotFoundException`.
+///
+/// The shared table has to read that code as a missing user pool, which is
+/// what it usually means. In a call that names something else — a group, a
+/// registered authenticator app — and whose pool has already answered another
+/// call, it is that thing that is missing, and telling the caller to go and
+/// check their configuration would send them the wrong way.
+pub fn cognito_or_missing<E, R>(error: SdkError<E, R>, key: &str, lang: &str) -> ApiError
+where
+    SdkError<E, R>: ProvideErrorMetadata + std::fmt::Debug,
+{
+    match error.code() {
+        Some("ResourceNotFoundException") => ApiError::not_found(t!(key, locale = lang)),
+        _ => cognito(error, lang),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +159,7 @@ mod tests {
             "CodeMismatchException",
             "InvalidPasswordException",
             "UsernameExistsException",
+            "GroupExistsException",
         ] {
             let (_, status) = known(code).expect("code should have wording");
             assert!(status.is_client_error(), "{code} answered {status}");

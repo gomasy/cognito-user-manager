@@ -4,7 +4,8 @@ use serde::Serialize;
 
 use crate::error::ApiResult;
 use crate::extract::Lang;
-use crate::schema::{self, AttributeField};
+use crate::groups;
+use crate::schema::AttributeField;
 use crate::session::Session;
 use crate::state::AppState;
 use crate::users;
@@ -40,6 +41,9 @@ pub struct PoolResponse {
     admin_visible: Vec<AttributeField>,
     editable: Vec<AttributeField>,
     groups: Vec<String>,
+    /// The group that grants access to the admin console, so the group screens
+    /// can mark it and leave out the delete button the server would refuse.
+    admin_group: Option<String>,
     /// Attributes the user search may filter on, served rather than mirrored
     /// in the frontend so the two lists cannot drift apart.
     search_fields: &'static [&'static str],
@@ -67,10 +71,11 @@ pub async fn pool(
         editable: if admin { pool.editable() } else { Vec::new() },
         // Only admins assign groups, and only they may read the list.
         groups: if admin {
-            schema::list_group_names(&state, &lang).await?
+            groups::names(&state, &lang).await?
         } else {
             Vec::new()
         },
+        admin_group: admin.then(|| state.config.admin_group.clone()),
         search_fields: if admin { &users::SEARCH_FIELDS } else { &[] },
     }))
 }

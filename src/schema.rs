@@ -221,33 +221,3 @@ impl SchemaCache {
         Ok(info)
     }
 }
-
-/// All group names in the user pool, following pagination.
-pub async fn list_group_names(state: &AppState, lang: &str) -> ApiResult<Vec<String>> {
-    let mut names = Vec::new();
-    let mut next_token: Option<String> = None;
-    loop {
-        let response = state
-            .cognito
-            .list_groups()
-            .user_pool_id(&state.config.user_pool_id)
-            .limit(60)
-            .set_next_token(next_token)
-            .send()
-            .await
-            .map_err(|error| cognito(error, lang))?;
-
-        names.extend(
-            response
-                .groups()
-                .iter()
-                .filter_map(|group| group.group_name().map(str::to_string)),
-        );
-        next_token = response.next_token().map(str::to_string);
-        if next_token.is_none() {
-            break;
-        }
-    }
-    names.sort();
-    Ok(names)
-}

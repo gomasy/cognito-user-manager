@@ -4,6 +4,7 @@ An Amazon Cognito user pool console: a Rust API server with a React single-page
 frontend.
 
 - **Admin console** (`/admin`) — search, create, edit and delete every user in the pool
+- **Groups** (`/admin/groups`) — create and delete groups, and add or remove members
 - **Self-service** (`/account`) — signed-in users edit their own attributes and password
 
 Attribute forms are generated from the pool schema via `DescribeUserPool`, so
@@ -130,7 +131,11 @@ app client can be reused as is.
         "cognito-idp:AdminUserGlobalSignOut",
         "cognito-idp:AdminListGroupsForUser",
         "cognito-idp:AdminAddUserToGroup",
-        "cognito-idp:AdminRemoveUserFromGroup"
+        "cognito-idp:AdminRemoveUserFromGroup",
+        "cognito-idp:GetGroup",
+        "cognito-idp:CreateGroup",
+        "cognito-idp:DeleteGroup",
+        "cognito-idp:ListUsersInGroup"
       ],
       "Resource": "arn:aws:cognito-idp:<region>:<account-id>:userpool/<user-pool-id>"
     }
@@ -159,11 +164,12 @@ src/
   error.rs               Cognito errors to localized JSON
   jwks.rs                JWKS cache and ID token verification
   session.rs             cookies, session loading, token refresh
-  schema.rs              DescribeUserPool / ListGroups, cached 5 minutes
+  schema.rs              DescribeUserPool, cached 5 minutes
   attributes.rs          attribute patch to Cognito calls
   users.rs               read models, search field allowlist and filter escaping
+  groups.rs              groups, their members, and every call that names one
   static_files.rs        app shell, catalogs and cache-control
-  handlers/              meta.rs, auth.rs, account.rs, admin.rs
+  handlers/              meta.rs, auth.rs, account.rs, admin.rs, groups.rs
 front/
   locales/               en.json, ja.json served at /locales
   src/
@@ -172,7 +178,7 @@ front/
     i18n.ts              browser language detection, catalog loading, t()
     hooks.ts             useT, useToast, history routing
     types.ts             mirrors the API payloads
-    components/          Login, Layout, Account, AdminUsers, AdminUserDetail, …
+    components/          Login, Layout, Account, AdminUsers, AdminGroups, …
     styles/              _tokens, _mixins, then one partial per area
 ```
 
@@ -205,6 +211,13 @@ POST   /api/admin/users/{username}/password/reset
 POST   /api/admin/users/{username}/enabled
 POST   /api/admin/users/{username}/signout
 POST   /api/admin/users/{username}/invite
+GET    /api/admin/groups
+POST   /api/admin/groups
+GET    /api/admin/groups/{group}
+DELETE /api/admin/groups/{group}
+GET    /api/admin/groups/{group}/users            ?token=
+POST   /api/admin/groups/{group}/users            add a member
+DELETE /api/admin/groups/{group}/users/{username}
 ```
 
 ## Authentication
@@ -246,8 +259,11 @@ POST   /api/admin/users/{username}/invite
 ### Safeguards
 
 - An admin cannot disable or delete their own account.
-- An admin cannot remove themselves from the admin group.
-- Deletion requires typing the username to confirm.
+- An admin cannot remove themselves from the admin group, from either the user
+  screen or the group's member list.
+- The group that grants admin access cannot be deleted here; doing so would lock
+  every admin out at once.
+- Deletion requires typing the username or group name to confirm.
 
 ## Internationalization
 
@@ -265,6 +281,8 @@ POST   /api/admin/users/{username}/invite
 
 - `ListUsers` supports prefix matching only, and cannot search custom attributes.
 - Paging is token-based, so only "next page" and "first page" are offered.
+- A group's name, description and precedence are set at creation; editing them
+  afterwards is not exposed.
 - Enabling or disabling MFA is not exposed; use the AWS console.
 
 ## Development

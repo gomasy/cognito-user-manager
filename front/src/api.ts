@@ -3,6 +3,7 @@ import type {
   AttributePatch,
   AuthOutcome,
   ChallengeAnswer,
+  GroupInfo,
   MyProfile,
   PoolInfo,
   PublicInfo,
@@ -87,9 +88,21 @@ async function request<T>(
   return res.json();
 }
 
+/** "?a=b" for the parameters that carry a value, or "" when none do. */
+function query(params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams(
+    Object.entries(params).filter((entry): entry is [string, string] => !!entry[1]),
+  ).toString();
+  return search ? `?${search}` : "";
+}
+
 /** Routed through here so no call site can forget to escape a username. */
 const userPath = (username: string) =>
   `/api/admin/users/${encodeURIComponent(username)}`;
+
+/** The same, for a group name, which may hold characters a path would eat. */
+const groupPath = (group: string) =>
+  `/api/admin/groups/${encodeURIComponent(group)}`;
 
 interface MessageResponse {
   message: string;
@@ -124,14 +137,8 @@ export const api = {
   verifyAttribute: (attribute: string, code: string) =>
     request<MessageResponse>("POST", "/api/account/verify", { attribute, code }),
 
-  listUsers: (query: { q?: string; field?: string; token?: string }) => {
-    const params = new URLSearchParams();
-    if (query.q) params.set("q", query.q);
-    if (query.field) params.set("field", query.field);
-    if (query.token) params.set("token", query.token);
-    const search = params.toString();
-    return request<UserPage>("GET", `/api/admin/users${search ? `?${search}` : ""}`);
-  },
+  listUsers: (params: { q?: string; field?: string; token?: string }) =>
+    request<UserPage>("GET", `/api/admin/users${query(params)}`),
   createUser: (payload: {
     username: string;
     attributes: AttributePatch;
@@ -162,4 +169,22 @@ export const api = {
     request<MessageResponse>("POST", `${userPath(username)}/signout`),
   resendInvite: (username: string) =>
     request<MessageResponse>("POST", `${userPath(username)}/invite`),
+  groups: () => request<GroupInfo[]>("GET", "/api/admin/groups"),
+  createGroup: (payload: {
+    name: string;
+    description: string | null;
+    precedence: number | null;
+  }) =>
+    request<MessageResponse & { name: string }>("POST", "/api/admin/groups", payload),
+  group: (group: string) => request<GroupInfo>("GET", groupPath(group)),
+  deleteGroup: (group: string) => request<MessageResponse>("DELETE", groupPath(group)),
+  groupMembers: (group: string, token?: string) =>
+    request<UserPage>("GET", `${groupPath(group)}/users${query({ token })}`),
+  addGroupMember: (group: string, username: string) =>
+    request<MessageResponse>("POST", `${groupPath(group)}/users`, { username }),
+  removeGroupMember: (group: string, username: string) =>
+    request<MessageResponse>(
+      "DELETE",
+      `${groupPath(group)}/users/${encodeURIComponent(username)}`,
+    ),
 };

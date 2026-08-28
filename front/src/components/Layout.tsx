@@ -4,7 +4,7 @@ import type { SessionInfo } from "../types";
 
 interface Props {
   session: SessionInfo;
-  current: "admin" | "account";
+  current: "admin" | "groups" | "account";
   onSignOut: () => void;
   children: ReactNode;
 }
@@ -42,6 +42,7 @@ export function Layout({ session, current, onSignOut, children }: Props) {
           </a>
           <nav className="nav">
             {session.isAdmin && link("/admin", "nav.users", current === "admin")}
+            {session.isAdmin && link("/admin/groups", "nav.groups", current === "groups")}
             {link("/account", "nav.account", current === "account")}
           </nav>
           <div className="who">

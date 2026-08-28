@@ -8,14 +8,13 @@ use serde_json::Value;
 use crate::attributes::{self, Patch, Values};
 use crate::error::{ApiError, ApiResult, cognito};
 use crate::extract::{AdminSession, Lang};
+use crate::groups;
 use crate::password;
 use crate::session::Session;
 use crate::state::AppState;
-use crate::users::{self, UserDetail, UserPage};
+use crate::users::{self, UserDetail, UserPage, is_self};
 
-use super::message;
-
-const PAGE_SIZE: i32 = 25;
+use super::{PAGE_SIZE, message};
 
 #[derive(Deserialize)]
 pub struct ListQuery {
@@ -40,19 +39,13 @@ pub async fn list(
         .map(Json)
 }
 
-async fn require_user(state: &AppState, username: &str, lang: &str) -> ApiResult<UserDetail> {
-    users::detail(state, username, lang)
-        .await?
-        .ok_or_else(|| ApiError::not_found(t!("error_user_not_found", locale = lang)))
-}
-
 pub async fn detail(
     State(state): State<AppState>,
     Lang(lang): Lang,
     AdminSession(_): AdminSession,
     Path(username): Path<String>,
 ) -> ApiResult<Json<UserDetail>> {
-    require_user(&state, &username, &lang).await.map(Json)
+    users::require(&state, &username, &lang).await.map(Json)
 }
 
 #[derive(Deserialize)]
@@ -130,7 +123,7 @@ pub async fn create(
         .map_err(|error| cognito(error, &lang))?;
 
     for group in &body.groups {
-        add_to_group(&state, username, group, &lang).await?;
+        groups::add_user(&state, username, group, &lang).await?;
     }
 
     // A suppressed invitation is never delivered, so a password made up here
@@ -158,7 +151,7 @@ pub async fn update(
     Path(username): Path<String>,
     Json(body): Json<PatchRequest>,
 ) -> ApiResult<Json<Value>> {
-    let user = require_user(&state, &username, &lang).await?;
+    let user = users::require(&state, &username, &lang).await?;
     let pool = state.schema.get(&state, &lang).await?;
     let changes = attributes::diff(&body.attributes, &pool.editable(), &user.attributes, &lang)?;
 
@@ -205,7 +198,7 @@ pub async fn set_groups(
     Path(username): Path<String>,
     Json(body): Json<GroupsRequest>,
 ) -> ApiResult<Json<Value>> {
-    let user = require_user(&state, &username, &lang).await?;
+    let user = users::require(&state, &username, &lang).await?;
     let admin_group = &state.config.admin_group;
 
     // Losing the admin group would lock the caller out of this screen.
@@ -221,10 +214,10 @@ pub async fn set_groups(
     }
 
     for group in body.groups.iter().filter(|g| !user.groups.contains(g)) {
-        add_to_group(&state, &username, group, &lang).await?;
+        groups::add_user(&state, &username, group, &lang).await?;
     }
     for group in user.groups.iter().filter(|g| !body.groups.contains(g)) {
-        remove_from_group(&state, &username, group, &lang).await?;
+        groups::remove_user(&state, &username, group, &lang).await?;
     }
 
     Ok(message(t!("msg_groups_updated", locale = &lang)))
@@ -382,48 +375,6 @@ pub async fn delete(
     Ok(message(t!("msg_user_deleted", locale = &lang)))
 }
 
-async fn add_to_group(state: &AppState, username: &str, group: &str, lang: &str) -> ApiResult<()> {
-    state
-        .cognito
-        .admin_add_user_to_group()
-        .user_pool_id(&state.config.user_pool_id)
-        .username(username)
-        .group_name(group)
-        .send()
-        .await
-        .map_err(|error| cognito(error, lang))?;
-    Ok(())
-}
-
-async fn remove_from_group(
-    state: &AppState,
-    username: &str,
-    group: &str,
-    lang: &str,
-) -> ApiResult<()> {
-    state
-        .cognito
-        .admin_remove_user_from_group()
-        .user_pool_id(&state.config.user_pool_id)
-        .username(username)
-        .group_name(group)
-        .send()
-        .await
-        .map_err(|error| cognito(error, lang))?;
-    Ok(())
-}
-
-/// Whether a user Cognito handed back is the signed-in admin.
-///
-/// The path may name a user by an alias — an email address, in a pool that
-/// signs in by email — and every admin API resolves one, so matching on the
-/// string that was asked for would miss. The comparison is against the account
-/// Cognito resolved it to: its username, or its sub for a token that carried no
-/// `cognito:username` and left the session naming itself by sub.
-fn is_self(session: &Session, user: &UserDetail) -> bool {
-    session.is_self(&user.username) || user.attributes.get("sub") == Some(&session.sub)
-}
-
 /// Guard for destructive actions on the signed-in admin, to avoid lockout.
 async fn deny_self(
     state: &AppState,
@@ -432,58 +383,9 @@ async fn deny_self(
     key: &str,
     lang: &str,
 ) -> ApiResult<()> {
-    if is_self(session, &require_user(state, username, lang).await?) {
+    if is_self(session, &users::require(state, username, lang).await?) {
         Err(ApiError::bad_request(t!(key, locale = lang)))
     } else {
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn session(username: &str, sub: &str) -> Session {
-        Session {
-            username: username.to_string(),
-            sub: sub.to_string(),
-            email: None,
-            groups: Vec::new(),
-            is_admin: true,
-            access_token: String::new(),
-        }
-    }
-
-    fn user(username: &str, sub: &str) -> UserDetail {
-        UserDetail {
-            username: username.to_string(),
-            enabled: true,
-            status: None,
-            created_at: None,
-            updated_at: None,
-            attributes: [("sub".to_string(), sub.to_string())].into(),
-            groups: Vec::new(),
-            mfa: Vec::new(),
-            preferred_mfa: None,
-        }
-    }
-
-    /// Reaching your own account as /admin/users/me@example.com has to be
-    /// refused just as naming yourself outright is: Cognito resolves the alias,
-    /// so the user handed back is the caller whatever the path said.
-    #[test]
-    fn an_alias_does_not_hide_the_caller_from_the_guards() {
-        let caller = session("8b1f0c2a", "8b1f0c2a");
-        assert!(is_self(&caller, &user("8b1f0c2a", "8b1f0c2a")));
-        assert!(!is_self(&caller, &user("d4e5f6a7", "d4e5f6a7")));
-    }
-
-    /// Without `cognito:username` the session names itself by sub, which then
-    /// has to be matched against the user's own sub attribute.
-    #[test]
-    fn a_session_known_only_by_its_sub_still_matches() {
-        let caller = session("8b1f0c2a", "8b1f0c2a");
-        assert!(is_self(&caller, &user("alice", "8b1f0c2a")));
-        assert!(!is_self(&caller, &user("alice", "d4e5f6a7")));
     }
 }

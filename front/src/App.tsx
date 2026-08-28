@@ -10,6 +10,8 @@ import {
 } from "./hooks";
 import type { PoolInfo, SessionInfo } from "./types";
 import { Account } from "./components/Account";
+import { AdminGroupDetail } from "./components/AdminGroupDetail";
+import { AdminGroups } from "./components/AdminGroups";
 import { AdminUserCreate } from "./components/AdminUserCreate";
 import { AdminUserDetail } from "./components/AdminUserDetail";
 import { AdminUsers } from "./components/AdminUsers";
@@ -45,6 +47,17 @@ export function App() {
   // Boots once; later refreshes go through the sign-in / sign-out handlers.
   useEffect(() => {
     void load();
+  }, []);
+
+  // Creating or deleting a group changes the list the user screens assign
+  // from, which is loaded once at boot; a failure here is not worth a toast of
+  // its own, since the action that triggered it reported its own outcome.
+  const reloadPool = useCallback(async () => {
+    try {
+      setPool(await api.pool());
+    } catch {
+      // The action that changed the groups reported its own outcome already.
+    }
   }, []);
 
   // A session can lapse mid-visit, so any 401 drops back to the sign-in screen.
@@ -90,7 +103,15 @@ export function App() {
   return (
     <ToastContext.Provider value={toast}>
       <RouterContext.Provider value={navigate}>
-        <Routes path={path} session={session} pool={pool} isSelf={isSelf} onSignOut={signOut} navigate={navigate} />
+        <Routes
+          path={path}
+          session={session}
+          pool={pool}
+          isSelf={isSelf}
+          onSignOut={signOut}
+          navigate={navigate}
+          onGroupsChanged={() => void reloadPool()}
+        />
         <Toasts toasts={toast.toasts} dismiss={toast.dismiss} />
       </RouterContext.Provider>
     </ToastContext.Provider>
@@ -104,9 +125,18 @@ interface RoutesProps {
   isSelf: (username: string) => boolean;
   onSignOut: () => void;
   navigate: (to: string, replace?: boolean) => void;
+  onGroupsChanged: () => void;
 }
 
-function Routes({ path, session, pool, isSelf, onSignOut, navigate }: RoutesProps) {
+function Routes({
+  path,
+  session,
+  pool,
+  isSelf,
+  onSignOut,
+  navigate,
+  onGroupsChanged,
+}: RoutesProps) {
   const home = session.isAdmin ? "/admin" : "/account";
   const wantsAdmin = path.startsWith("/admin");
 
@@ -114,13 +144,31 @@ function Routes({ path, session, pool, isSelf, onSignOut, navigate }: RoutesProp
     if (path === "/" || (wantsAdmin && !session.isAdmin)) navigate(home, true);
   }, [path, wantsAdmin, session.isAdmin, home, navigate]);
 
-  const chrome = (current: "admin" | "account", children: ReactNode) => (
+  const chrome = (current: "admin" | "groups" | "account", children: ReactNode) => (
     <Layout session={session} current={current} onSignOut={onSignOut}>
       {children}
     </Layout>
   );
 
   if (wantsAdmin && session.isAdmin) {
+    if (path === "/admin/groups") {
+      return chrome(
+        "groups",
+        <AdminGroups adminGroup={pool.adminGroup} onGroupsChanged={onGroupsChanged} />,
+      );
+    }
+    const group = path.match(/^\/admin\/groups\/(.+)$/);
+    if (group) {
+      return chrome(
+        "groups",
+        <AdminGroupDetail
+          key={group[1]}
+          group={decodeURIComponent(group[1])}
+          adminGroup={pool.adminGroup}
+          onGroupsChanged={onGroupsChanged}
+        />,
+      );
+    }
     if (path === "/admin/users/new") {
       return chrome(
         "admin",

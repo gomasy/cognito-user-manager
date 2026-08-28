@@ -27,6 +27,8 @@ export interface PoolInfo {
   adminVisible: AttributeField[];
   editable: AttributeField[];
   groups: string[];
+  /** The group that grants admin access; null for a non-admin. */
+  adminGroup: string | null;
   /** Attributes the user search may filter on; empty for a non-admin. */
   searchFields: string[];
 }
@@ -54,6 +56,16 @@ export interface UserDetail extends UserSummary {
   groups: string[];
   mfa: string[];
   preferredMfa: string | null;
+}
+
+export interface GroupInfo {
+  name: string;
+  description: string | null;
+  /** Lower wins when a user is in several groups. */
+  precedence: number | null;
+  roleArn: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface UserPage {

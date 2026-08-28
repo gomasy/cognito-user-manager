@@ -3,6 +3,7 @@ import { api } from "../api";
 import { errorText, useDateFormat, useNavigate, useT, useToast } from "../hooks";
 import type { UserSummary } from "../types";
 import { EnabledBadge, StatusBadge } from "./Badge";
+import { Pager } from "./Pager";
 
 function displayName(user: UserSummary): string {
   const composed = [user.attributes.family_name, user.attributes.given_name]
@@ -164,24 +165,12 @@ export function AdminUsers({ poolName, searchFields }: Props) {
         {loading && <p className="empty">{t("common.loading")}</p>}
       </div>
 
-      <div className="row row--between">
-        <span className="hint">
-          {t("admin.shown", { count: users.length })}
-          {nextToken && ` ${t("admin.more")}`}
-        </span>
-        <span className="row row--gap">
-          {token && (
-            <button type="button" className="btn" onClick={() => setToken(undefined)}>
-              {t("admin.firstPage")}
-            </button>
-          )}
-          {nextToken && (
-            <button type="button" className="btn" onClick={() => setToken(nextToken)}>
-              {t("admin.nextPage")}
-            </button>
-          )}
-        </span>
-      </div>
+      <Pager
+        count={users.length}
+        token={token}
+        nextToken={nextToken}
+        onPage={setToken}
+      />
     </main>
   );
 }
