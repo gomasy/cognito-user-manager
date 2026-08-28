@@ -23,6 +23,8 @@ export interface PoolInfo {
   id: string;
   name: string | null;
   usernameIsEmail: boolean;
+  /** "OFF", "ON" or "OPTIONAL"; a pool with MFA off rejects every preference. */
+  mfaConfiguration: string;
   selfEditable: AttributeField[];
   adminVisible: AttributeField[];
   editable: AttributeField[];
@@ -66,6 +68,24 @@ export interface GroupInfo {
   roleArn: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+/**
+ * Factors to switch on or off. A factor left out is not sent to Cognito at
+ * all, which is what keeps a pool that lacks it from rejecting the request.
+ */
+export interface MfaPreference {
+  sms?: boolean;
+  softwareToken?: boolean;
+  email?: boolean;
+  preferred?: string | null;
+}
+
+export interface TotpSetup {
+  secretCode: string;
+  otpauthUri: string;
+  /** An SVG data URI, or null if the URI was too long to encode. */
+  qrDataUri: string | null;
 }
 
 export interface UserPage {

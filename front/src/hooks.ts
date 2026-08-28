@@ -90,6 +90,8 @@ export interface ActionApi {
     action: () => Promise<{ message: string }>,
     refresh?: boolean,
   ) => Promise<boolean>;
+  /** The same, for a call that answers with data rather than a sentence. */
+  attempt: <T>(action: () => Promise<T>) => Promise<T | null>;
 }
 
 /**
@@ -115,7 +117,19 @@ export function useAction(reload?: () => Promise<unknown>): ActionApi {
     }
   };
 
-  return { busy, run };
+  const attempt = async <T,>(action: () => Promise<T>) => {
+    setBusy(true);
+    try {
+      return await action();
+    } catch (e) {
+      notify(errorText(e), "error");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { busy, run, attempt };
 }
 
 export const RouterContext = createContext<(to: string) => void>(() => {});

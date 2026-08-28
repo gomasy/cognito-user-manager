@@ -4,16 +4,26 @@ import { errorText, useAction, useDateFormat, useNavigate, useT, useToast } from
 import type { AttributeField, UserDetail } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 import { EnabledBadge, StatusBadge } from "./Badge";
+import { MfaCard, MfaSummary } from "./Mfa";
 
 interface Props {
   username: string;
   fields: AttributeField[];
   editable: AttributeField[];
   groups: string[];
+  /** The pool's own MFA setting, so the card can say when it is off. */
+  poolMfa: string;
   isSelf: (username: string) => boolean;
 }
 
-export function AdminUserDetail({ username, fields, editable, groups, isSelf }: Props) {
+export function AdminUserDetail({
+  username,
+  fields,
+  editable,
+  groups,
+  poolMfa,
+  isSelf,
+}: Props) {
   const t = useT();
   const navigate = useNavigate();
   const formatDate = useDateFormat();
@@ -99,8 +109,7 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
           <dd>{formatDate(user.updatedAt)}</dd>
           <dt>{t("account.mfa")}</dt>
           <dd>
-            {user.mfa.length === 0 ? t("account.mfaOff") : user.mfa.join(" / ")}
-            {user.preferredMfa && ` (${t("detail.preferred")}: ${user.preferredMfa})`}
+            <MfaSummary enabled={user.mfa} preferred={user.preferredMfa} />
           </dd>
         </dl>
       </div>
@@ -157,6 +166,28 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
           {t("detail.updateGroups")}
         </button>
       </form>
+
+      <MfaCard
+        enabled={user.mfa}
+        preferred={user.preferredMfa}
+        poolMfa={poolMfa}
+        busy={busy}
+        hint={t("mfa.adminHint")}
+        onSave={(preference) => void run(() => api.setUserMfa(user.username, preference))}
+      >
+        <hr />
+        <div className="row row--gap">
+          <button
+            type="button"
+            className="btn btn--danger"
+            disabled={busy}
+            onClick={() => void run(() => api.deleteUserTotp(user.username))}
+          >
+            {t("mfa.removeTotp")}
+          </button>
+          <span className="hint">{t("mfa.removeTotpHint")}</span>
+        </div>
+      </MfaCard>
 
       <PasswordCard
         busy={busy}

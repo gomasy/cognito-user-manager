@@ -81,6 +81,9 @@ fn known(code: &str) -> Option<(&'static str, StatusCode)> {
         "InvalidParameterException" => ("error_invalid_parameter", Http::BAD_REQUEST),
         "UsernameExistsException" => ("error_username_exists", Http::BAD_REQUEST),
         "GroupExistsException" => ("error_group_exists", Http::BAD_REQUEST),
+        // Both are a code that did not match the enrolled authenticator app.
+        "EnableSoftwareTokenMFAException" => ("error_code_mismatch", Http::BAD_REQUEST),
+        "SoftwareTokenMFANotFoundException" => ("error_totp_not_found", Http::BAD_REQUEST),
         "AliasExistsException" => ("error_alias_exists", Http::BAD_REQUEST),
         // Our own credentials or app client are wrong, which the caller can do
         // nothing about: their own wording, but still an upstream failure.
@@ -160,6 +163,7 @@ mod tests {
             "InvalidPasswordException",
             "UsernameExistsException",
             "GroupExistsException",
+            "SoftwareTokenMFANotFoundException",
         ] {
             let (_, status) = known(code).expect("code should have wording");
             assert!(status.is_client_error(), "{code} answered {status}");

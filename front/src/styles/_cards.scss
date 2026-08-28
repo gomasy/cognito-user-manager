@@ -74,3 +74,16 @@
 .verify {
   margin-top: $gap * 0.75;
 }
+
+// The enrolment QR is rendered by the server as an SVG data URI. Its modules
+// are black whatever the colour scheme, so it carries its own light ground.
+.qr {
+  display: block;
+  width: 220px;
+  height: 220px;
+  padding: 8px;
+  margin-bottom: $gap;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}

@@ -3,13 +3,20 @@ import { api } from "../api";
 import { errorText, useAction, useLabel, useT, useToast } from "../hooks";
 import type { AttributeField, MyProfile } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
+import { MfaCard, MfaSummary, TotpSetupBlock } from "./Mfa";
 
 const CONTACTS = [
   { name: "email", verified: "email_verified" },
   { name: "phone_number", verified: "phone_number_verified" },
 ];
 
-export function Account({ fields }: { fields: AttributeField[] }) {
+interface Props {
+  fields: AttributeField[];
+  /** The pool's own MFA setting, so the card can say when it is off. */
+  poolMfa: string;
+}
+
+export function Account({ fields, poolMfa }: Props) {
   const t = useT();
   const label = useLabel();
   const { notify } = useToast();
@@ -27,7 +34,13 @@ export function Account({ fields }: { fields: AttributeField[] }) {
     load().catch((e) => notify(errorText(e), "error"));
   }, []);
 
-  const { busy, run } = useAction(load);
+  const { busy, run, attempt } = useAction(load);
+
+  // Enrolment answers with the secret rather than a sentence, so it takes the
+  // other half of the hook: the toast only comes once a code has confirmed it.
+  const startTotp = () => attempt(() => api.startTotp());
+  const verifyTotp = (code: string, deviceName: string) =>
+    run(() => api.verifyTotp(code, deviceName || undefined));
 
   if (!profile) return <main className="page page--narrow"><p className="hint">{t("common.loading")}</p></main>;
 
@@ -85,6 +98,16 @@ export function Account({ fields }: { fields: AttributeField[] }) {
 
       <PasswordCard busy={busy} onSubmit={(a, b, c) => run(() => api.changePassword(a, b, c), false)} />
 
+      <MfaCard
+        enabled={profile.mfa}
+        preferred={profile.preferredMfa}
+        poolMfa={poolMfa}
+        busy={busy}
+        onSave={(preference) => void run(() => api.setMyMfa(preference))}
+      >
+        <TotpSetupBlock busy={busy} onStart={startTotp} onVerify={verifyTotp} />
+      </MfaCard>
+
       <div className="card">
         <h2>{t("account.info")}</h2>
         <dl className="dl">
@@ -101,7 +124,9 @@ export function Account({ fields }: { fields: AttributeField[] }) {
                 ))}
           </dd>
           <dt>{t("account.mfa")}</dt>
-          <dd>{profile.mfa.length === 0 ? t("account.mfaOff") : profile.mfa.join(" / ")}</dd>
+          <dd>
+            <MfaSummary enabled={profile.mfa} preferred={profile.preferredMfa} />
+          </dd>
         </dl>
       </div>
     </main>

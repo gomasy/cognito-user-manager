@@ -4,10 +4,12 @@ import type {
   AuthOutcome,
   ChallengeAnswer,
   GroupInfo,
+  MfaPreference,
   MyProfile,
   PoolInfo,
   PublicInfo,
   SessionInfo,
+  TotpSetup,
   UserDetail,
   UserPage,
 } from "./types";
@@ -136,6 +138,14 @@ export const api = {
     request<MessageResponse>("POST", "/api/account/verify/send", { attribute }),
   verifyAttribute: (attribute: string, code: string) =>
     request<MessageResponse>("POST", "/api/account/verify", { attribute, code }),
+  setMyMfa: (preference: MfaPreference) =>
+    request<MessageResponse>("PUT", "/api/account/mfa", preference),
+  startTotp: () => request<TotpSetup>("POST", "/api/account/mfa/totp"),
+  verifyTotp: (code: string, deviceName?: string) =>
+    request<MessageResponse>("POST", "/api/account/mfa/totp/verify", {
+      code,
+      deviceName,
+    }),
 
   listUsers: (params: { q?: string; field?: string; token?: string }) =>
     request<UserPage>("GET", `/api/admin/users${query(params)}`),
@@ -169,6 +179,11 @@ export const api = {
     request<MessageResponse>("POST", `${userPath(username)}/signout`),
   resendInvite: (username: string) =>
     request<MessageResponse>("POST", `${userPath(username)}/invite`),
+  setUserMfa: (username: string, preference: MfaPreference) =>
+    request<MessageResponse>("PUT", `${userPath(username)}/mfa`, preference),
+  deleteUserTotp: (username: string) =>
+    request<MessageResponse>("DELETE", `${userPath(username)}/mfa/totp`),
+
   groups: () => request<GroupInfo[]>("GET", "/api/admin/groups"),
   createGroup: (payload: {
     name: string;

@@ -7,6 +7,7 @@ mod groups;
 mod handlers;
 mod jwks;
 mod locale;
+mod mfa;
 mod password;
 mod schema;
 mod session;
@@ -63,6 +64,12 @@ fn api_router() -> Router<AppState> {
             post(handlers::account::send_code),
         )
         .route("/api/account/verify", post(handlers::account::verify))
+        .route("/api/account/mfa", put(handlers::account::set_mfa))
+        .route("/api/account/mfa/totp", post(handlers::account::start_totp))
+        .route(
+            "/api/account/mfa/totp/verify",
+            post(handlers::account::verify_totp),
+        )
         .route(
             "/api/admin/users",
             get(handlers::admin::list).post(handlers::admin::create),
@@ -96,6 +103,14 @@ fn api_router() -> Router<AppState> {
         .route(
             "/api/admin/users/{username}/invite",
             post(handlers::admin::resend_invite),
+        )
+        .route(
+            "/api/admin/users/{username}/mfa",
+            put(handlers::admin::set_mfa),
+        )
+        .route(
+            "/api/admin/users/{username}/mfa/totp",
+            delete(handlers::admin::delete_totp),
         )
         .route(
             "/api/admin/groups",

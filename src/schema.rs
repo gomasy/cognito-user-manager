@@ -78,6 +78,10 @@ pub struct PoolInfo {
     pub fields: Vec<AttributeField>,
     /// True when the pool signs users in by email rather than a username.
     pub username_is_email: bool,
+    /// `OFF`, `ON` or `OPTIONAL`. A pool with MFA off rejects every per-user
+    /// preference, so the screens say so rather than offering a form that
+    /// cannot work.
+    pub mfa_configuration: String,
     /// Server-side only: it drives the generated temporary passwords and no
     /// screen has any use for it.
     #[serde(skip)]
@@ -201,6 +205,10 @@ impl SchemaCache {
                 .unwrap_or_default()
                 .iter()
                 .any(|attribute| attribute.as_str() == "email"),
+            mfa_configuration: pool
+                .and_then(|p| p.mfa_configuration())
+                .map(|mfa| mfa.as_str().to_string())
+                .unwrap_or_else(|| "OFF".to_string()),
             password_policy: policies
                 .and_then(|p| p.password_policy())
                 .map(password::Policy::from)

@@ -189,6 +189,7 @@ function Routes({
           fields={pool.adminVisible}
           editable={pool.editable}
           groups={pool.groups}
+          poolMfa={pool.mfaConfiguration}
           isSelf={isSelf}
         />,
       );
@@ -199,5 +200,8 @@ function Routes({
     );
   }
 
-  return chrome("account", <Account fields={pool.selfEditable} />);
+  return chrome(
+    "account",
+    <Account fields={pool.selfEditable} poolMfa={pool.mfaConfiguration} />,
+  );
 }

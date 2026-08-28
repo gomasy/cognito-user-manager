@@ -35,6 +35,9 @@ pub struct PoolResponse {
     id: String,
     name: Option<String>,
     username_is_email: bool,
+    /// `OFF`, `ON` or `OPTIONAL`, so the MFA forms can say when the pool
+    /// itself has second factors switched off.
+    mfa_configuration: String,
     /// The subset each screen may edit, resolved server-side so a client
     /// cannot widen it by asking for a different list.
     self_editable: Vec<AttributeField>,
@@ -62,6 +65,7 @@ pub async fn pool(
         id: pool.id.clone(),
         name: pool.name.clone(),
         username_is_email: pool.username_is_email,
+        mfa_configuration: pool.mfa_configuration.clone(),
         self_editable: pool.self_editable(),
         admin_visible: if admin {
             pool.admin_visible()

@@ -6,9 +6,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::attributes::{self, Patch, Values};
-use crate::error::{ApiError, ApiResult, cognito};
+use crate::error::{ApiError, ApiResult, cognito, cognito_or_missing};
 use crate::extract::{AdminSession, Lang};
 use crate::groups;
+use crate::mfa;
 use crate::password;
 use crate::session::Session;
 use crate::state::AppState;
@@ -315,6 +316,72 @@ pub async fn set_enabled(
         .map_err(|error| cognito(error, &lang))?;
 
     Ok(message(t!("msg_user_disabled", locale = &lang)))
+}
+
+/// Switches a user's second factors on or off.
+///
+/// Enrolment itself is not an admin action: the authenticator secret and the
+/// phone number belong to the user, so this can only turn on a factor Cognito
+/// already holds one for. What it is really for is turning them off.
+pub async fn set_mfa(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    AdminSession(_): AdminSession,
+    Path(username): Path<String>,
+    Json(preference): Json<mfa::Preference>,
+) -> ApiResult<Json<Value>> {
+    let Some(settings) = preference.settings(&lang)? else {
+        return Ok(message(t!("msg_no_changes", locale = &lang)));
+    };
+
+    state
+        .cognito
+        .admin_set_user_mfa_preference()
+        .user_pool_id(&state.config.user_pool_id)
+        .username(&username)
+        .set_sms_mfa_settings(settings.sms)
+        .set_software_token_mfa_settings(settings.software_token)
+        .set_email_mfa_settings(settings.email)
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
+
+    Ok(message(t!("msg_mfa_updated", locale = &lang)))
+}
+
+/// Forgets the user's registered authenticator app, so they can enrol a new
+/// one — the way back in when a phone is lost.
+pub async fn delete_totp(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    AdminSession(_): AdminSession,
+    Path(username): Path<String>,
+) -> ApiResult<Json<Value>> {
+    // A factor left switched on after its token is gone would ask the user at
+    // sign-in for a code nothing can produce, so the preference goes first: if
+    // this half fails, nothing has been destroyed yet.
+    state
+        .cognito
+        .admin_set_user_mfa_preference()
+        .user_pool_id(&state.config.user_pool_id)
+        .username(&username)
+        .software_token_mfa_settings(mfa::software_token(false))
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
+
+    // The pool answered a moment ago, so a missing resource here is the
+    // registered app: this user never had one to forget.
+    state
+        .cognito
+        .admin_delete_software_token()
+        .user_pool_id(&state.config.user_pool_id)
+        .username(&username)
+        .send()
+        .await
+        .map_err(|error| cognito_or_missing(error, "error_totp_not_found", &lang))?;
+
+    Ok(message(t!("msg_totp_removed", locale = &lang)))
 }
 
 pub async fn sign_out(

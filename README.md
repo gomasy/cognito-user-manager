@@ -3,9 +3,11 @@
 An Amazon Cognito user pool console: a Rust API server with a React single-page
 frontend.
 
-- **Admin console** (`/admin`) — search, create, edit and delete every user in the pool
+- **Admin console** (`/admin`) — search, create, edit and delete every user in the
+  pool, and switch their second factors on or off
 - **Groups** (`/admin/groups`) — create and delete groups, and add or remove members
-- **Self-service** (`/account`) — signed-in users edit their own attributes and password
+- **Self-service** (`/account`) — signed-in users edit their own attributes and
+  password, and register an authenticator app for MFA
 
 Attribute forms are generated from the pool schema via `DescribeUserPool`, so
 standard and custom attributes both work without touching the code. The UI ships
@@ -17,6 +19,7 @@ English and Japanese, and API messages are localized to match.
 | --- | --- |
 | Server | Rust 2024, axum, tower-http, tower-cookies |
 | AWS | aws-sdk-cognitoidentityprovider, TLS via rustls + ring (no C toolchain) |
+| MFA | `qrcode` renders the enrolment secret as an inline SVG data URI |
 | Server i18n | rust-i18n, catalogs in `locales/*.yml` |
 | Frontend | React 19 + TypeScript, bundled by Parcel |
 | Styles | SCSS, tokens and mixins under `front/src/styles` |
@@ -132,6 +135,8 @@ app client can be reused as is.
         "cognito-idp:AdminListGroupsForUser",
         "cognito-idp:AdminAddUserToGroup",
         "cognito-idp:AdminRemoveUserFromGroup",
+        "cognito-idp:AdminSetUserMFAPreference",
+        "cognito-idp:AdminDeleteSoftwareToken",
         "cognito-idp:GetGroup",
         "cognito-idp:CreateGroup",
         "cognito-idp:DeleteGroup",
@@ -147,7 +152,9 @@ Dropping the mutating actions leaves a read-only console: keep
 `DescribeUserPool`, `ListUsers`, `ListGroups`, `AdminGetUser`,
 `AdminListGroupsForUser`, `AdminInitiateAuth` and `AdminRespondToAuthChallenge`
 (the last two are needed to sign in at all). Scope `Resource` to the single user
-pool ARN rather than `*`.
+pool ARN rather than `*`. Self-service actions — the caller's own profile, their
+password and their own second factors — use access-token APIs, which the app
+client authorizes; they need no IAM action of their own.
 
 ## Layout
 
@@ -168,6 +175,7 @@ src/
   attributes.rs          attribute patch to Cognito calls
   users.rs               read models, search field allowlist and filter escaping
   groups.rs              groups, their members, and every call that names one
+  mfa.rs                 factor preferences and TOTP enrolment URIs
   static_files.rs        app shell, catalogs and cache-control
   handlers/              meta.rs, auth.rs, account.rs, admin.rs, groups.rs
 front/
@@ -178,7 +186,7 @@ front/
     i18n.ts              browser language detection, catalog loading, t()
     hooks.ts             useT, useToast, history routing
     types.ts             mirrors the API payloads
-    components/          Login, Layout, Account, AdminUsers, AdminGroups, …
+    components/          Login, Layout, Account, AdminUsers, AdminGroups, Mfa, …
     styles/              _tokens, _mixins, then one partial per area
 ```
 
@@ -200,6 +208,9 @@ PATCH  /api/account                               own attributes
 POST   /api/account/password
 POST   /api/account/verify/send
 POST   /api/account/verify
+PUT    /api/account/mfa                           own second factors on or off
+POST   /api/account/mfa/totp                      start authenticator enrolment
+POST   /api/account/mfa/totp/verify               confirm a code and turn it on
 GET    /api/admin/users                           ?q=&field=&token=
 POST   /api/admin/users
 GET    /api/admin/users/{username}
@@ -211,6 +222,8 @@ POST   /api/admin/users/{username}/password/reset
 POST   /api/admin/users/{username}/enabled
 POST   /api/admin/users/{username}/signout
 POST   /api/admin/users/{username}/invite
+PUT    /api/admin/users/{username}/mfa
+DELETE /api/admin/users/{username}/mfa/totp       forget the registered app
 GET    /api/admin/groups
 POST   /api/admin/groups
 GET    /api/admin/groups/{group}
@@ -264,6 +277,8 @@ DELETE /api/admin/groups/{group}/users/{username}
 - The group that grants admin access cannot be deleted here; doing so would lock
   every admin out at once.
 - Deletion requires typing the username or group name to confirm.
+- Removing a registered authenticator app switches the factor off first, so a
+  user is never left being asked for a code nothing can produce.
 
 ## Internationalization
 
@@ -281,9 +296,11 @@ DELETE /api/admin/groups/{group}/users/{username}
 
 - `ListUsers` supports prefix matching only, and cannot search custom attributes.
 - Paging is token-based, so only "next page" and "first page" are offered.
+- An admin can switch a user's second factors on or off and forget a registered
+  authenticator app, but cannot enrol one for them: the secret belongs to the
+  user, who registers it on their own account screen.
 - A group's name, description and precedence are set at creation; editing them
   afterwards is not exposed.
-- Enabling or disabling MFA is not exposed; use the AWS console.
 
 ## Development
 

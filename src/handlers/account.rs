@@ -1,3 +1,4 @@
+use aws_sdk_cognitoidentityprovider::types::VerifySoftwareTokenResponseType;
 use axum::Json;
 use axum::extract::State;
 use rust_i18n::t;
@@ -7,6 +8,7 @@ use serde_json::Value;
 use crate::attributes::{self, Patch};
 use crate::error::{ApiError, ApiResult, cognito};
 use crate::extract::Lang;
+use crate::mfa::{self, TotpSetup};
 use crate::session::Session;
 use crate::state::AppState;
 use crate::users::{self, MyProfile};
@@ -198,4 +200,126 @@ pub async fn verify(
         .map_err(|error| cognito(error, &lang))?;
 
     Ok(message(t!("msg_verified", locale = &lang)))
+}
+
+/// Turns the caller's own second factors on or off.
+///
+/// Written with the access token, so this screen structurally cannot change
+/// anybody else's factors.
+pub async fn set_mfa(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    session: Session,
+    Json(preference): Json<mfa::Preference>,
+) -> ApiResult<Json<Value>> {
+    let Some(settings) = preference.settings(&lang)? else {
+        return Ok(message(t!("msg_no_changes", locale = &lang)));
+    };
+
+    state
+        .cognito
+        .set_user_mfa_preference()
+        .access_token(&session.access_token)
+        .set_sms_mfa_settings(settings.sms)
+        .set_software_token_mfa_settings(settings.software_token)
+        .set_email_mfa_settings(settings.email)
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
+
+    Ok(message(t!("msg_mfa_updated", locale = &lang)))
+}
+
+/// Hands out a fresh authenticator secret, as a QR code to scan and as the
+/// characters to type where a camera is not an option.
+///
+/// The factor stays off until a code from that secret comes back to
+/// `verify_totp`, so a setup that is started and abandoned changes nothing.
+pub async fn start_totp(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    session: Session,
+) -> ApiResult<Json<TotpSetup>> {
+    let response = state
+        .cognito
+        .associate_software_token()
+        .access_token(&session.access_token)
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
+
+    let Some(secret) = response.secret_code() else {
+        tracing::error!("cognito associated a software token without a secret");
+        return Err(ApiError::internal(&lang));
+    };
+
+    // The label an authenticator app shows: the pool this account belongs to,
+    // and the address the user knows themselves by.
+    let pool = state.schema.get(&state, &lang).await?;
+    let issuer = pool.name.unwrap_or(pool.id);
+    let account = session.email.as_deref().unwrap_or(&session.username);
+
+    Ok(Json(TotpSetup::new(secret, &issuer, account)))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TotpRequest {
+    code: String,
+    #[serde(default)]
+    device_name: Option<String>,
+}
+
+/// Confirms the authenticator app really holds the secret, then turns the
+/// factor on and prefers it — an app that is enrolled but never asked for
+/// would be a setup that silently did nothing.
+pub async fn verify_totp(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    session: Session,
+    Json(body): Json<TotpRequest>,
+) -> ApiResult<Json<Value>> {
+    let code = body.code.trim();
+    if code.is_empty() {
+        return Err(ApiError::bad_request(t!(
+            "error_code_required",
+            locale = &lang
+        )));
+    }
+
+    let response = state
+        .cognito
+        .verify_software_token()
+        .access_token(&session.access_token)
+        .user_code(code)
+        .set_friendly_device_name(
+            body.device_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string),
+        )
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
+
+    // A wrong code is usually an error of its own; this covers the pool that
+    // answers with a status instead.
+    if response.status() != Some(&VerifySoftwareTokenResponseType::Success) {
+        return Err(ApiError::bad_request(t!(
+            "error_code_mismatch",
+            locale = &lang
+        )));
+    }
+
+    state
+        .cognito
+        .set_user_mfa_preference()
+        .access_token(&session.access_token)
+        .software_token_mfa_settings(mfa::software_token(true))
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
+
+    Ok(message(t!("msg_totp_registered", locale = &lang)))
 }
