@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { useDateFormat, useNavigate, useT, useToast } from "../hooks";
+import { errorText, useAction, useDateFormat, useNavigate, useT, useToast } from "../hooks";
 import type { AttributeField, UserDetail } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 import { EnabledBadge, StatusBadge } from "./Badge";
@@ -23,7 +23,6 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
   const [missing, setMissing] = useState(false);
   const [draft, setDraft] = useState<Draft>({});
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -33,7 +32,7 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
       setSelectedGroups(detail.groups);
     } catch (e) {
       setMissing(true);
-      notify(e instanceof Error ? e.message : String(e), "error");
+      notify(errorText(e), "error");
     }
   }, [username, fields, notify]);
 
@@ -41,21 +40,7 @@ export function AdminUserDetail({ username, fields, editable, groups, isSelf }: 
     void load();
   }, [load]);
 
-  // Answers whether the action went through, for callers that must wait on it.
-  const run = async (action: () => Promise<{ message: string }>, reload = true) => {
-    setBusy(true);
-    try {
-      const { message } = await action();
-      notify(message);
-      if (reload) await load();
-      return true;
-    } catch (e) {
-      notify(e instanceof Error ? e.message : String(e), "error");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { busy, run } = useAction(load);
 
   if (missing) {
     return (

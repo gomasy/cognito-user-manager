@@ -3,6 +3,7 @@ import { api, UNAUTHORIZED_EVENT, UnauthorizedError } from "./api";
 import {
   RouterContext,
   ToastContext,
+  errorText,
   useLocation,
   useT,
   useToastState,
@@ -35,7 +36,7 @@ export function App() {
     } catch (e) {
       if (e instanceof UnauthorizedError) setBoot("signedOut");
       else {
-        toast.notify(e instanceof Error ? e.message : String(e), "error");
+        toast.notify(errorText(e), "error");
         setBoot("signedOut");
       }
     }

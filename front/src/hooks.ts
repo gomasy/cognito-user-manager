@@ -44,6 +44,15 @@ export interface ToastApi {
 
 export const ToastContext = createContext<ToastApi | null>(null);
 
+/**
+ * What to show for a rejected call. Server errors arrive as an Error whose
+ * message the server already phrased in the user's language; anything else is
+ * a bug or a dead network, and shows as whatever it stringifies to.
+ */
+export function errorText(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
 export function useToast(): ToastApi {
   const context = useContext(ToastContext);
   if (!context) throw new Error("ToastContext missing");
@@ -67,6 +76,46 @@ export function useToastState(): ToastApi {
   );
 
   return { toasts, notify, dismiss };
+}
+
+export interface ActionApi {
+  /** True while a call is in flight, for disabling the buttons that start one. */
+  busy: boolean;
+  /**
+   * Runs a mutation, shows the sentence it answers with, and reloads the
+   * screen unless told not to. Answers whether it went through, for the
+   * callers that must wait — a delete that was refused has to stay on its page.
+   */
+  run: (
+    action: () => Promise<{ message: string }>,
+    refresh?: boolean,
+  ) => Promise<boolean>;
+}
+
+/**
+ * The shape every screen repeats around a mutating call: block the buttons,
+ * report the outcome as a toast, and reload what the call changed.
+ */
+export function useAction(reload?: () => Promise<unknown>): ActionApi {
+  const { notify } = useToast();
+  const [busy, setBusy] = useState(false);
+
+  const run = async (action: () => Promise<{ message: string }>, refresh = true) => {
+    setBusy(true);
+    try {
+      const { message } = await action();
+      notify(message);
+      if (refresh && reload) await reload();
+      return true;
+    } catch (e) {
+      notify(errorText(e), "error");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { busy, run };
 }
 
 export const RouterContext = createContext<(to: string) => void>(() => {});

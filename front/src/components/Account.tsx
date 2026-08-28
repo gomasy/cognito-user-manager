@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { useLabel, useT, useToast } from "../hooks";
+import { errorText, useAction, useLabel, useT, useToast } from "../hooks";
 import type { AttributeField, MyProfile } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 
@@ -15,7 +15,6 @@ export function Account({ fields }: { fields: AttributeField[] }) {
   const { notify } = useToast();
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [draft, setDraft] = useState<Draft>({});
-  const [busy, setBusy] = useState(false);
 
   const load = async () => {
     const loaded = await api.profile();
@@ -25,21 +24,10 @@ export function Account({ fields }: { fields: AttributeField[] }) {
 
   useEffect(() => {
     // Loads once: re-running on a field-list change would discard edits in progress.
-    load().catch((e) => notify(String(e instanceof Error ? e.message : e), "error"));
+    load().catch((e) => notify(errorText(e), "error"));
   }, []);
 
-  const run = async (action: () => Promise<{ message: string }>, reload = true) => {
-    setBusy(true);
-    try {
-      const { message } = await action();
-      notify(message);
-      if (reload) await load();
-    } catch (e) {
-      notify(e instanceof Error ? e.message : String(e), "error");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { busy, run } = useAction(load);
 
   if (!profile) return <main className="page page--narrow"><p className="hint">{t("common.loading")}</p></main>;
 

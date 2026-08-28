@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { useNavigate, useT, useToast } from "../hooks";
+import { errorText, useNavigate, useT, useToast } from "../hooks";
 import type { AttributeField } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 
@@ -43,7 +43,7 @@ export function AdminUserCreate({ fields, groups, usernameIsEmail }: Props) {
         navigate(`/admin/users/${encodeURIComponent(result.username)}`);
       }
     } catch (e) {
-      notify(e instanceof Error ? e.message : String(e), "error");
+      notify(errorText(e), "error");
     } finally {
       setBusy(false);
     }

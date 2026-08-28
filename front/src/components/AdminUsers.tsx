@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { useDateFormat, useNavigate, useT, useToast } from "../hooks";
+import { errorText, useDateFormat, useNavigate, useT, useToast } from "../hooks";
 import type { UserSummary } from "../types";
 import { EnabledBadge, StatusBadge } from "./Badge";
 
@@ -42,7 +42,7 @@ export function AdminUsers({ poolName, searchFields }: Props) {
         setUsers(page.users);
         setNextToken(page.nextToken);
       })
-      .catch((e) => notify(e instanceof Error ? e.message : String(e), "error"))
+      .catch((e) => notify(errorText(e), "error"))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;

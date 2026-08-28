@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { has } from "../i18n";
-import { useT } from "../hooks";
+import { errorText, useT } from "../hooks";
 import type { Challenge, PublicInfo } from "../types";
 
 const CODE_CHALLENGES = ["SMS_MFA", "EMAIL_OTP", "SOFTWARE_TOKEN_MFA"];
@@ -36,7 +36,7 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
