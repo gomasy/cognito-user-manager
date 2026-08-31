@@ -103,7 +103,13 @@ export function AdminGroupDetail({ group, adminGroup, onGroupsChanged }: Props) 
 
       <AddMemberCard
         busy={busy}
-        onAdd={(username) => run(() => api.addGroupMember(group, username))}
+        // The new member is sorted in wherever Cognito puts them, which is
+        // rarely the page that happens to be open.
+        onAdd={async (username) => {
+          const added = await run(() => api.addGroupMember(group, username), token === undefined);
+          if (added) setToken(undefined);
+          return added;
+        }}
       />
 
       <div className="card">
