@@ -21,17 +21,27 @@ export function Account({ fields, poolMfa }: Props) {
   const label = useLabel();
   const { notify } = useToast();
   const [profile, setProfile] = useState<MyProfile | null>(null);
+  const [failed, setFailed] = useState(false);
   const [draft, setDraft] = useState<Draft>({});
 
   const load = async () => {
     const loaded = await api.profile();
     setProfile(loaded);
+    setFailed(false);
     setDraft(initialDraft(fields, loaded.attributes));
   };
 
+  // The toast expires; without a profile there is nothing else on the page,
+  // which would leave it on "loading" for good.
+  const start = () =>
+    load().catch((e) => {
+      setFailed(true);
+      notify(errorText(e), "error");
+    });
+
   useEffect(() => {
     // Loads once: re-running on a field-list change would discard edits in progress.
-    load().catch((e) => notify(errorText(e), "error"));
+    void start();
   }, []);
 
   const { busy, run, attempt } = useAction(load);
@@ -42,7 +52,22 @@ export function Account({ fields, poolMfa }: Props) {
   const verifyTotp = (code: string, deviceName: string) =>
     run(() => api.verifyTotp(code, deviceName || undefined));
 
-  if (!profile) return <main className="page page--narrow"><p className="hint">{t("common.loading")}</p></main>;
+  if (!profile) {
+    return (
+      <main className="page page--narrow">
+        {failed ? (
+          <div className="card">
+            <h2>{t("common.loadFailed")}</h2>
+            <button type="button" className="btn" onClick={() => void start()}>
+              {t("common.retry")}
+            </button>
+          </div>
+        ) : (
+          <p className="hint">{t("common.loading")}</p>
+        )}
+      </main>
+    );
+  }
 
   const unverified = CONTACTS.filter(
     (contact) =>

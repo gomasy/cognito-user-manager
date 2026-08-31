@@ -22,6 +22,8 @@ export function AdminGroups({ adminGroup, onGroupsChanged }: Props) {
     try {
       setGroups(await api.groups());
     } catch (e) {
+      // Leaving this null would sit on "loading" with nothing in flight.
+      setGroups([]);
       notify(errorText(e), "error");
     }
   }, [notify]);
