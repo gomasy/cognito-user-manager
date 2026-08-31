@@ -71,10 +71,12 @@ impl Preference {
     /// The check goes through here rather than being left to each handler, so
     /// a call site cannot send a preference that was never validated.
     pub fn settings(&self, lang: &str) -> ApiResult<Option<Settings>> {
+        // Before the early return, so a request that names a preference but no
+        // factor is refused rather than answered as if nothing was asked for.
+        self.check(lang)?;
         if self.sms.is_none() && self.software_token.is_none() && self.email.is_none() {
             return Ok(None);
         }
-        self.check(lang)?;
 
         Ok(Some(Settings {
             sms: self.flags(SMS).map(|(enabled, preferred)| {
