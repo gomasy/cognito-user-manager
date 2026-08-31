@@ -168,7 +168,9 @@ pub async fn create(
         .set_precedence(precedence)
         .send()
         .await
-        .map_err(|error| failed(error, lang))?;
+        // Nothing here names an existing group, so a missing resource is the
+        // pool itself and gets the shared wording.
+        .map_err(|error| cognito(error, lang))?;
     Ok(())
 }
 
