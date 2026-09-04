@@ -13,7 +13,7 @@ aws-config = { version = "1.11.0", default-features = false, features = ["rt-tok
 aws-sdk-cognitoidentityprovider = { version = "1.132.0", default-features = false, features = ["rt-tokio", "behavior-version-latest"] }
 # TLS is pinned to rustls+ring so the build needs no cmake / C toolchain.
 aws-smithy-http-client = { version = "1.4.0", features = ["rustls-ring"] }
-aws-smithy-types = "1.6.2"
+aws-smithy-types = "1.6.3"
 axum = "0.8.9"
 base64 = "0.23.1"
 dotenvy = "0.15.7"
