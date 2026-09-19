@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use aws_sdk_cognitoidentityprovider::operation::admin_initiate_auth::AdminInitiateAuthOutput;
+use aws_sdk_cognitoidentityprovider::operation::admin_initiate_auth::builders::AdminInitiateAuthFluentBuilder;
 use aws_sdk_cognitoidentityprovider::operation::admin_respond_to_auth_challenge::AdminRespondToAuthChallengeOutput;
 use aws_sdk_cognitoidentityprovider::types::{
     AuthFlowType, AuthenticationResultType, ChallengeNameType,
@@ -21,13 +22,17 @@ use crate::state::AppState;
 const CHALLENGE_MAX_AGE: Duration = Duration::minutes(15);
 
 /// Challenges this app can answer. Anything else is sent back as unsupported.
-const SUPPORTED: [&str; 5] = [
+const SUPPORTED: [&str; 6] = [
     "NEW_PASSWORD_REQUIRED",
     "SMS_MFA",
     "EMAIL_OTP",
     "SOFTWARE_TOKEN_MFA",
     "SELECT_MFA_TYPE",
+    WEB_AUTHN,
 ];
+
+/// Cognito only offers a passkey to a sign-in that asks for one by name.
+const WEB_AUTHN: &str = "WEB_AUTHN";
 
 /// Pending challenge, kept in an httpOnly cookie between requests. The Cognito
 /// session string never reaches the browser.
@@ -39,6 +44,10 @@ struct StoredChallenge {
     required_attributes: Vec<String>,
     mfa_options: Vec<String>,
     destination: Option<String>,
+    /// Needed on the way out and never again, and a cookie holds 4 KB in
+    /// total: this one travels in the response body alone.
+    #[serde(skip)]
+    credential_request_options: Option<String>,
 }
 
 /// What the browser is told about a pending challenge.
@@ -49,6 +58,7 @@ pub struct ChallengeView {
     required_attributes: Vec<String>,
     mfa_options: Vec<String>,
     destination: Option<String>,
+    credential_request_options: Option<String>,
 }
 
 impl From<&StoredChallenge> for ChallengeView {
@@ -58,6 +68,7 @@ impl From<&StoredChallenge> for ChallengeView {
             required_attributes: challenge.required_attributes.clone(),
             mfa_options: challenge.mfa_options.clone(),
             destination: challenge.destination.clone(),
+            credential_request_options: challenge.credential_request_options.clone(),
         }
     }
 }
@@ -76,7 +87,7 @@ pub struct LoginRequest {
     password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChallengeRequest {
     #[serde(default)]
@@ -87,6 +98,8 @@ pub struct ChallengeRequest {
     code: Option<String>,
     #[serde(default)]
     mfa_type: Option<String>,
+    #[serde(default)]
+    credential: Option<String>,
     #[serde(default)]
     user_attributes: HashMap<String, String>,
 }
@@ -135,6 +148,27 @@ macro_rules! auth_response_from {
 
 auth_response_from!(AdminInitiateAuthOutput, AdminRespondToAuthChallengeOutput);
 
+/// `AdminInitiateAuth` with what every sign-in needs on it: the pool, the app
+/// client, the user, and the SECRET_HASH for a client that has a secret.
+fn initiate(
+    state: &AppState,
+    flow: AuthFlowType,
+    username: &str,
+) -> AdminInitiateAuthFluentBuilder {
+    let request = state
+        .cognito
+        .admin_initiate_auth()
+        .user_pool_id(&state.config.user_pool_id)
+        .client_id(&state.config.client_id)
+        .auth_flow(flow)
+        .auth_parameters("USERNAME", username);
+
+    match state.secret_hash(username) {
+        Some(hash) => request.auth_parameters("SECRET_HASH", hash),
+        None => request,
+    }
+}
+
 /// Stores tokens on success, otherwise records the next challenge.
 fn handle(
     cookies: &Cookies,
@@ -180,6 +214,10 @@ fn handle(
             .parameters
             .get("CODE_DELIVERY_DESTINATION")
             .cloned(),
+        credential_request_options: response
+            .parameters
+            .get("CREDENTIAL_REQUEST_OPTIONS")
+            .cloned(),
         name,
         session: challenge_session,
     };
@@ -211,23 +249,60 @@ pub async fn login(
         )));
     }
 
-    let mut request = state
-        .cognito
-        .admin_initiate_auth()
-        .user_pool_id(&state.config.user_pool_id)
-        .client_id(&state.config.client_id)
-        .auth_flow(AuthFlowType::AdminUserPasswordAuth)
-        .auth_parameters("USERNAME", username)
-        .auth_parameters("PASSWORD", &body.password);
-    if let Some(hash) = state.secret_hash(username) {
-        request = request.auth_parameters("SECRET_HASH", hash);
-    }
-
-    let response = request
+    let response = initiate(&state, AuthFlowType::AdminUserPasswordAuth, username)
+        .auth_parameters("PASSWORD", &body.password)
         .send()
         .await
         .map_err(|error| cognito(error, &lang))?;
+
     handle(&cookies, secure, response.into(), username, &lang).map(Json)
+}
+
+#[derive(Deserialize)]
+pub struct PasskeyRequest {
+    username: String,
+}
+
+/// Starts a sign-in the user answers with a passkey instead of a password.
+///
+/// Passkeys exist only in choice-based authentication, so this asks for that
+/// flow and names the challenge it wants.
+pub async fn passkey(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    SecureCookies(secure): SecureCookies,
+    cookies: Cookies,
+    Json(body): Json<PasskeyRequest>,
+) -> ApiResult<Json<AuthOutcome>> {
+    let username = body.username.trim();
+    if username.is_empty() {
+        return Err(ApiError::bad_request(t!(
+            "error_username_required",
+            locale = &lang
+        )));
+    }
+
+    let response: AuthResponse = initiate(&state, AuthFlowType::UserAuth, username)
+        .auth_parameters("PREFERRED_CHALLENGE", WEB_AUTHN)
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?
+        .into();
+
+    // A user without a passkey is answered with SELECT_CHALLENGE and the
+    // factors they do have, none of which this button can go on with.
+    let offered = response
+        .challenge_name
+        .as_ref()
+        .map(ChallengeNameType::as_str);
+    if response.result.is_none() && offered != Some(WEB_AUTHN) {
+        return Err(ApiError::bad_request(t!(
+            "error_passkey_unavailable",
+            locale = &lang
+        )));
+    }
+
+    handle(&cookies, secure, response, username, &lang).map(Json)
 }
 
 fn responses_for(
@@ -276,6 +351,16 @@ fn responses_for(
         }
         "SOFTWARE_TOKEN_MFA" => {
             responses.insert("SOFTWARE_TOKEN_MFA_CODE".to_string(), code);
+        }
+        WEB_AUTHN => {
+            let credential = body.credential.as_deref().unwrap_or_default().trim();
+            if credential.is_empty() {
+                return Err(ApiError::bad_request(t!(
+                    "error_passkey_required",
+                    locale = lang
+                )));
+            }
+            responses.insert("CREDENTIAL".to_string(), credential.to_string());
         }
         "SELECT_MFA_TYPE" => {
             responses.insert(
@@ -349,4 +434,64 @@ pub async fn logout(State(state): State<AppState>, cookies: Cookies) -> StatusCo
     }
     session::clear_tokens(&cookies);
     StatusCode::NO_CONTENT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn challenge_of(name: &str) -> StoredChallenge {
+        StoredChallenge {
+            name: name.to_string(),
+            session: "cognito-session".to_string(),
+            username: "alice".to_string(),
+            required_attributes: Vec::new(),
+            mfa_options: Vec::new(),
+            destination: None,
+            credential_request_options: Some(r#"{"challenge":"ZXhhbXBsZQ"}"#.to_string()),
+        }
+    }
+
+    /// A cookie over 4 KB is dropped silently, which would look like a sign-in
+    /// that forgets itself.
+    #[test]
+    fn the_stored_challenge_leaves_the_passkey_options_out() {
+        let challenge = challenge_of(WEB_AUTHN);
+        let stored = serde_json::to_string(&challenge).expect("a challenge serializes");
+
+        assert!(!stored.contains("credential_request_options"), "{stored}");
+        assert!(stored.contains("cognito-session"), "{stored}");
+        assert!(
+            ChallengeView::from(&challenge)
+                .credential_request_options
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_passkey_answers_with_the_credential_it_signed() {
+        let state = AppState::for_tests().await;
+        let challenge = challenge_of(WEB_AUTHN);
+        let body = ChallengeRequest {
+            credential: Some(r#"{"id":"ZXhhbXBsZQ"}"#.to_string()),
+            ..ChallengeRequest::default()
+        };
+
+        let responses = responses_for(&state, &challenge, &body, "en").expect("valid");
+        assert_eq!(
+            responses.get("CREDENTIAL").map(String::as_str),
+            Some(r#"{"id":"ZXhhbXBsZQ"}"#)
+        );
+        assert_eq!(responses.get("USERNAME").map(String::as_str), Some("alice"));
+    }
+
+    /// Cognito answers a bare parameter error; saying so here keeps the
+    /// wording specific.
+    #[tokio::test]
+    async fn a_passkey_step_without_a_credential_is_refused() {
+        let state = AppState::for_tests().await;
+        let challenge = challenge_of(WEB_AUTHN);
+
+        assert!(responses_for(&state, &challenge, &ChallengeRequest::default(), "en").is_err());
+    }
 }

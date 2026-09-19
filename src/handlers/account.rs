@@ -1,14 +1,15 @@
 use aws_sdk_cognitoidentityprovider::types::VerifySoftwareTokenResponseType;
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use rust_i18n::t;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::attributes::{self, Patch};
-use crate::error::{ApiError, ApiResult, cognito};
+use crate::error::{ApiError, ApiResult, cognito, cognito_or_missing};
 use crate::extract::Lang;
 use crate::mfa::{self, TotpSetup};
+use crate::passkey::{self, Credential};
 use crate::session::Session;
 use crate::state::AppState;
 use crate::users::{self, MyProfile};
@@ -322,4 +323,106 @@ pub async fn verify_totp(
         .map_err(|error| cognito(error, &lang))?;
 
     Ok(message(t!("msg_totp_registered", locale = &lang)))
+}
+
+/// Every passkey the caller has registered. The list is followed to the end:
+/// one on a page the user cannot see is one they cannot remove either.
+pub async fn passkeys(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    session: Session,
+) -> ApiResult<Json<Vec<Credential>>> {
+    let mut credentials = Vec::new();
+    let mut next_token: Option<String> = None;
+    loop {
+        let response = state
+            .cognito
+            .list_web_authn_credentials()
+            .access_token(&session.access_token)
+            .max_results(20)
+            .set_next_token(next_token)
+            .send()
+            .await
+            .map_err(|error| cognito(error, &lang))?;
+
+        credentials.extend(response.credentials().iter().map(Credential::from));
+        next_token = response.next_token().map(str::to_string);
+        if next_token.is_none() {
+            return Ok(Json(credentials));
+        }
+    }
+}
+
+/// The options the browser needs to make a new passkey. Nothing is registered
+/// until `add_passkey` hands the credential back, so a setup that is started
+/// and abandoned leaves the account as it was.
+pub async fn start_passkey(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    session: Session,
+) -> ApiResult<Json<Value>> {
+    let response = state
+        .cognito
+        .start_web_authn_registration()
+        .access_token(&session.access_token)
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
+
+    Ok(Json(passkey::to_json(
+        response.credential_creation_options(),
+    )))
+}
+
+#[derive(Deserialize)]
+pub struct PasskeyRequest {
+    /// Passed through untouched: Cognito issued the challenge inside it and is
+    /// the only party that can check it.
+    credential: Value,
+}
+
+pub async fn add_passkey(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    session: Session,
+    Json(body): Json<PasskeyRequest>,
+) -> ApiResult<Json<Value>> {
+    if !body.credential.is_object() {
+        return Err(ApiError::bad_request(t!(
+            "error_passkey_required",
+            locale = &lang
+        )));
+    }
+
+    state
+        .cognito
+        .complete_web_authn_registration()
+        .access_token(&session.access_token)
+        .credential(passkey::from_json(&body.credential))
+        .send()
+        .await
+        .map_err(|error| cognito(error, &lang))?;
+
+    Ok(message(t!("msg_passkey_registered", locale = &lang)))
+}
+
+/// Forgets one passkey. Written with the access token, so this screen
+/// structurally cannot reach anybody else's.
+pub async fn delete_passkey(
+    State(state): State<AppState>,
+    Lang(lang): Lang,
+    session: Session,
+    Path(credential_id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    state
+        .cognito
+        .delete_web_authn_credential()
+        .access_token(&session.access_token)
+        .credential_id(&credential_id)
+        .send()
+        .await
+        // The pool answered a moment ago, so what is missing is the passkey.
+        .map_err(|error| cognito_or_missing(error, "error_passkey_not_found", &lang))?;
+
+    Ok(message(t!("msg_passkey_removed", locale = &lang)))
 }

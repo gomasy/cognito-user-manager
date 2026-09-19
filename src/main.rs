@@ -8,6 +8,7 @@ mod handlers;
 mod jwks;
 mod locale;
 mod mfa;
+mod passkey;
 mod password;
 mod schema;
 mod session;
@@ -50,6 +51,7 @@ fn api_router() -> Router<AppState> {
         .route("/api/pool", get(handlers::meta::pool))
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/challenge", post(handlers::auth::challenge))
+        .route("/api/auth/passkey", post(handlers::auth::passkey))
         .route("/api/auth/logout", post(handlers::auth::logout))
         .route(
             "/api/account",
@@ -69,6 +71,18 @@ fn api_router() -> Router<AppState> {
         .route(
             "/api/account/mfa/totp/verify",
             post(handlers::account::verify_totp),
+        )
+        .route(
+            "/api/account/passkeys",
+            get(handlers::account::passkeys).post(handlers::account::add_passkey),
+        )
+        .route(
+            "/api/account/passkeys/new",
+            post(handlers::account::start_passkey),
+        )
+        .route(
+            "/api/account/passkeys/{credential_id}",
+            delete(handlers::account::delete_passkey),
         )
         .route(
             "/api/admin/users",
@@ -233,24 +247,15 @@ mod tests {
     /// route added later cannot quietly be public.
     #[tokio::test]
     async fn protected_routes_require_a_session() {
-        let config = Arc::new(Config {
-            region: "ap-northeast-1".into(),
-            user_pool_id: "ap-northeast-1_test".into(),
-            client_id: "client".into(),
-            client_secret: None,
-            admin_group: "admin".into(),
-            bind: "127.0.0.1:0".into(),
-            secure_cookies: Some(true),
-        });
-        let state = AppState::new(config).await;
         let app = api_router()
             .layer(CookieManagerLayer::new())
-            .with_state(state);
+            .with_state(AppState::for_tests().await);
 
         for path in [
             "/api/session",
             "/api/pool",
             "/api/account",
+            "/api/account/passkeys",
             "/api/admin/users",
             "/api/admin/users/someone",
             "/api/admin/groups",

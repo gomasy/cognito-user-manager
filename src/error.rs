@@ -85,6 +85,22 @@ fn known(code: &str) -> Option<(&'static str, StatusCode)> {
         "EnableSoftwareTokenMFAException" => ("error_code_mismatch", Http::BAD_REQUEST),
         "SoftwareTokenMFANotFoundException" => ("error_totp_not_found", Http::BAD_REQUEST),
         "AliasExistsException" => ("error_alias_exists", Http::BAD_REQUEST),
+        // Passkeys. A feature that was never switched on reads very
+        // differently from one that is refusing a credential.
+        "WebAuthnNotEnabledException" => ("error_passkey_not_enabled", Http::BAD_REQUEST),
+        "WebAuthnConfigurationMissingException" => {
+            ("error_passkey_not_configured", Http::BAD_REQUEST)
+        }
+        "OperationNotEnabledException" => ("error_operation_not_enabled", Http::BAD_REQUEST),
+        "WebAuthnOriginNotAllowedException" | "WebAuthnRelyingPartyMismatchException" => {
+            ("error_passkey_origin", Http::BAD_REQUEST)
+        }
+        "WebAuthnClientMismatchException" => ("error_passkey_client", Http::BAD_REQUEST),
+        "WebAuthnCredentialNotSupportedException" => {
+            ("error_passkey_unsupported", Http::BAD_REQUEST)
+        }
+        // Started too long ago to finish.
+        "WebAuthnChallengeNotFoundException" => ("error_challenge_expired", Http::BAD_REQUEST),
         // Our own credentials or app client are wrong, which the caller can do
         // nothing about: their own wording, but still an upstream failure.
         "UnrecognizedClientException" | "InvalidSignatureException" => {
@@ -164,6 +180,25 @@ mod tests {
             "UsernameExistsException",
             "GroupExistsException",
             "SoftwareTokenMFANotFoundException",
+        ] {
+            let (_, status) = known(code).expect("code should have wording");
+            assert!(status.is_client_error(), "{code} answered {status}");
+        }
+    }
+
+    /// Each of these has wording that says what to do about it, and a 5xx
+    /// would have the screen offer to try again instead.
+    #[test]
+    fn a_passkey_failure_is_not_an_outage() {
+        for code in [
+            "WebAuthnNotEnabledException",
+            "WebAuthnConfigurationMissingException",
+            "WebAuthnOriginNotAllowedException",
+            "WebAuthnRelyingPartyMismatchException",
+            "WebAuthnClientMismatchException",
+            "WebAuthnCredentialNotSupportedException",
+            "WebAuthnChallengeNotFoundException",
+            "OperationNotEnabledException",
         ] {
             let (_, status) = known(code).expect("code should have wording");
             assert!(status.is_client_error(), "{code} answered {status}");

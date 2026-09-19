@@ -37,3 +37,21 @@ impl AppState {
         Some(base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes()))
     }
 }
+
+#[cfg(test)]
+impl AppState {
+    /// A state naming a pool that does not exist, for the tests that only need
+    /// the shape of one.
+    pub async fn for_tests() -> Self {
+        Self::new(Arc::new(Config {
+            region: "ap-northeast-1".into(),
+            user_pool_id: "ap-northeast-1_test".into(),
+            client_id: "client".into(),
+            client_secret: None,
+            admin_group: "admin".into(),
+            bind: "127.0.0.1:0".into(),
+            secure_cookies: Some(true),
+        }))
+        .await
+    }
+}

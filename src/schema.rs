@@ -90,6 +90,9 @@ pub struct PoolInfo {
     /// where Cognito rejects a new user that comes with one.
     #[serde(skip)]
     pub password_sign_in: bool,
+    /// Whether the pool offers passkeys as a first factor. The screens hide
+    /// every passkey control when it does not.
+    pub passkey_sign_in: bool,
 }
 
 impl PoolInfo {
@@ -220,6 +223,15 @@ impl SchemaCache {
                 // authentication, which leaves passwords as the only factor.
                 .is_none_or(|factors| {
                     factors.is_empty() || factors.contains(&AuthFactorType::Password)
+                }),
+            // The other way around: passkeys exist only in choice-based
+            // authentication, so a pool that named no factors has none.
+            passkey_sign_in: policies
+                .and_then(|p| p.sign_in_policy())
+                .is_some_and(|policy| {
+                    policy
+                        .allowed_first_auth_factors()
+                        .contains(&AuthFactorType::WebAuthn)
                 }),
         };
 
