@@ -46,7 +46,11 @@ pub async fn detail(
     AdminSession(_): AdminSession,
     Path(username): Path<String>,
 ) -> ApiResult<Json<UserDetail>> {
-    users::require(&state, &username, &lang).await.map(Json)
+    let mut user = users::require(&state, &username, &lang).await?;
+    // By the username Cognito resolved; the path may have named an alias.
+    user.auth_factors = users::auth_factors(&state, &user.username).await;
+
+    Ok(Json(user))
 }
 
 #[derive(Deserialize)]

@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { errorText, useAction, useDateFormat, useNavigate, useT, useToast } from "../hooks";
+import {
+  errorText,
+  useAction,
+  useDateFormat,
+  useNavigate,
+  useT,
+  useToast,
+  useWording,
+} from "../hooks";
 import type { AttributeField, UserDetail } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 import { EnabledBadge, StatusBadge } from "./Badge";
@@ -25,6 +33,7 @@ export function AdminUserDetail({
   isSelf,
 }: Props) {
   const t = useT();
+  const factor = useWording("factor");
   const navigate = useNavigate();
   const formatDate = useDateFormat();
   const { notify } = useToast();
@@ -111,6 +120,13 @@ export function AdminUserDetail({
           <dd>
             <MfaSummary enabled={user.mfa} preferred={user.preferredMfa} />
           </dd>
+          {/* Empty when the pool would not say which factors are set up. */}
+          {user.authFactors.length > 0 && (
+            <>
+              <dt>{t("detail.authFactors")}</dt>
+              <dd>{user.authFactors.map(factor).join(" / ")}</dd>
+            </>
+          )}
         </dl>
       </div>
 

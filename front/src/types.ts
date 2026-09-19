@@ -62,6 +62,8 @@ export interface UserDetail extends UserSummary {
   groups: string[];
   mfa: string[];
   preferredMfa: string | null;
+  /** First factors the user has set up; empty when Cognito would not say. */
+  authFactors: string[];
 }
 
 export interface GroupInfo {

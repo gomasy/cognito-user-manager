@@ -61,6 +61,8 @@ pub struct UserDetail {
     pub groups: Vec<String>,
     pub mfa: Vec<String>,
     pub preferred_mfa: Option<String>,
+    /// Filled in by the one screen that shows them; empty everywhere else.
+    pub auth_factors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -164,6 +166,7 @@ pub async fn detail(state: &AppState, username: &str, lang: &str) -> ApiResult<O
         groups: groups_of(state, username, lang).await?,
         mfa: user.user_mfa_setting_list().to_vec(),
         preferred_mfa: user.preferred_mfa_setting().map(str::to_string),
+        auth_factors: Vec::new(),
     }))
 }
 
@@ -184,6 +187,34 @@ pub async fn require(state: &AppState, username: &str, lang: &str) -> ApiResult<
 /// `cognito:username` and left the session naming itself by sub.
 pub fn is_self(session: &Session, user: &UserDetail) -> bool {
     session.is_self(&user.username) || user.attributes.get("sub") == Some(&session.sub)
+}
+
+/// The first factors the user can sign in with, which is the only way an admin
+/// screen can tell whether they have registered a passkey. Kept out of
+/// `detail` because it is another round trip and only the user page shows it.
+///
+/// Best effort: the operation needs an IAM action of its own and is not
+/// offered on every feature plan, so a refusal leaves the list empty rather
+/// than failing the page over a detail.
+pub async fn auth_factors(state: &AppState, username: &str) -> Vec<String> {
+    match state
+        .cognito
+        .admin_get_user_auth_factors()
+        .user_pool_id(&state.config.user_pool_id)
+        .username(username)
+        .send()
+        .await
+    {
+        Ok(response) => response
+            .configured_user_auth_factors()
+            .iter()
+            .map(|factor| factor.as_str().to_string())
+            .collect(),
+        Err(error) => {
+            tracing::debug!(?error, "auth factors are not available for this pool");
+            Vec::new()
+        }
+    }
 }
 
 /// Every group the user belongs to, following pagination.
@@ -263,6 +294,7 @@ mod tests {
             groups: Vec::new(),
             mfa: Vec::new(),
             preferred_mfa: None,
+            auth_factors: Vec::new(),
         }
     }
 
