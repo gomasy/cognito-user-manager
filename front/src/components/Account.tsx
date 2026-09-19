@@ -4,6 +4,7 @@ import { errorText, useAction, useLabel, useT, useToast } from "../hooks";
 import type { AttributeField, MyProfile } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 import { MfaCard, MfaSummary, TotpSetupBlock } from "./Mfa";
+import { PasskeyCard } from "./Passkeys";
 
 const CONTACTS = [
   { name: "email", verified: "email_verified" },
@@ -14,9 +15,11 @@ interface Props {
   fields: AttributeField[];
   /** The pool's own MFA setting, so the card can say when it is off. */
   poolMfa: string;
+  /** Whether the pool allows passkeys; the card is hidden when it does not. */
+  passkeys: boolean;
 }
 
-export function Account({ fields, poolMfa }: Props) {
+export function Account({ fields, poolMfa, passkeys }: Props) {
   const t = useT();
   const label = useLabel();
   const { notify } = useToast();
@@ -132,6 +135,8 @@ export function Account({ fields, poolMfa }: Props) {
       >
         <TotpSetupBlock busy={busy} onStart={startTotp} onVerify={verifyTotp} />
       </MfaCard>
+
+      {passkeys && <PasskeyCard />}
 
       <div className="card">
         <h2>{t("account.info")}</h2>

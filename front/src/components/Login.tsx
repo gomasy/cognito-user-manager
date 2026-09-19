@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { has } from "../i18n";
-import { errorText, useT } from "../hooks";
-import type { Challenge, PublicInfo } from "../types";
+import { errorText, useT, useWording } from "../hooks";
+import type { AuthOutcome, Challenge, PublicInfo } from "../types";
+import * as webauthn from "../webauthn";
 
 const CODE_CHALLENGES = ["SMS_MFA", "EMAIL_OTP", "SOFTWARE_TOKEN_MFA"];
 
 export function Login({ onSignedIn }: { onSignedIn: () => void }) {
   const t = useT();
+  const label = useWording("challenge");
   const [info, setInfo] = useState<PublicInfo | null>(null);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [error, setError] = useState("");
@@ -25,11 +26,6 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
     api.publicInfo().then(setInfo).catch(() => setInfo(null));
   }, []);
 
-  const label = (name: string) => {
-    const key = `challenge.${name}`;
-    return has(key) ? t(key) : name;
-  };
-
   async function submit(action: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -42,38 +38,70 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
     }
   }
 
+  /**
+   * Shows what the server answered with, and hands back the challenge that
+   * came with it — answering one can surface the next.
+   */
+  const advance = (outcome: AuthOutcome): Challenge | null => {
+    if (outcome.status === "signedIn") {
+      onSignedIn();
+      return null;
+    }
+    setChallenge(outcome.challenge);
+    setMfaType(outcome.challenge.mfaOptions[0] ?? "");
+    setCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+    return outcome.challenge;
+  };
+
   const signIn = (event: React.FormEvent) => {
     event.preventDefault();
     void submit(async () => {
-      const outcome = await api.login(username, password);
-      if (outcome.status === "signedIn") onSignedIn();
-      else {
-        setChallenge(outcome.challenge);
-        setMfaType(outcome.challenge.mfaOptions[0] ?? "");
-      }
+      advance(await api.login(username, password));
+    });
+  };
+
+  /**
+   * Signs the options Cognito issued and sends the assertion back. A cancelled
+   * prompt can simply be tried again; the challenge is good until it expires.
+   */
+  const useThePasskey = async (current: Challenge) => {
+    const options = current.credentialRequestOptions;
+    if (!options) throw new Error(t("passkey.failed"));
+    const credential = await webauthn.authenticate(JSON.parse(options));
+    advance(await api.answerChallenge({ credential: JSON.stringify(credential) }));
+  };
+
+  const passkeySignIn = () => {
+    void submit(async () => {
+      const next = advance(await api.passkeyLogin(username));
+      if (next?.name === "WEB_AUTHN") await useThePasskey(next);
     });
   };
 
   const answer = (event: React.FormEvent) => {
     event.preventDefault();
+    if (challenge?.name === "WEB_AUTHN") {
+      void submit(() => useThePasskey(challenge));
+      return;
+    }
     void submit(async () => {
-      const outcome = await api.answerChallenge({
-        newPassword,
-        confirmPassword,
-        code,
-        mfaType,
-        userAttributes: attributes,
-      });
-      if (outcome.status === "signedIn") onSignedIn();
-      else {
-        // Answering one challenge can surface the next one.
-        setChallenge(outcome.challenge);
-        setCode("");
-        setNewPassword("");
-        setConfirmPassword("");
-      }
+      advance(
+        await api.answerChallenge({
+          newPassword,
+          confirmPassword,
+          code,
+          mfaType,
+          userAttributes: attributes,
+        }),
+      );
     });
   };
+
+  // Offered only where it works: a pool that allows passkeys, a browser that
+  // can hold one.
+  const passkeyReady = (info?.passkeySignIn ?? false) && webauthn.isSupported();
 
   const restart = () => {
     setChallenge(null);
@@ -89,9 +117,11 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
           {challenge
             ? challenge.name === "NEW_PASSWORD_REQUIRED"
               ? t("login.newPasswordHint")
-              : challenge.destination
-                ? t("login.codeSentTo", { destination: challenge.destination })
-                : t("login.challengeHint")
+              : challenge.name === "WEB_AUTHN"
+                ? t("login.passkeyHint")
+                : challenge.destination
+                  ? t("login.codeSentTo", { destination: challenge.destination })
+                  : t("login.challengeHint")
             : info?.poolName
               ? t("login.pool", { pool: info.poolName })
               : t("login.hint")}
@@ -197,8 +227,24 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
 
         <div className="row row--gap">
           <button type="submit" className="btn btn--primary" disabled={busy}>
-            {busy ? t("common.working") : challenge ? t("common.continue") : t("login.submit")}
+            {busy
+              ? t("common.working")
+              : challenge?.name === "WEB_AUTHN"
+                ? t("login.usePasskey")
+                : challenge
+                  ? t("common.continue")
+                  : t("login.submit")}
           </button>
+          {!challenge && passkeyReady && (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || !username.trim()}
+              onClick={passkeySignIn}
+            >
+              {t("login.passkey")}
+            </button>
+          )}
           {challenge && (
             <button type="button" className="btn" onClick={restart}>
               {t("login.restart")}

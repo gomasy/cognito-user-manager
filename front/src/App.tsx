@@ -202,6 +202,10 @@ function Routes({
 
   return chrome(
     "account",
-    <Account fields={pool.selfEditable} poolMfa={pool.mfaConfiguration} />,
+    <Account
+      fields={pool.selfEditable}
+      poolMfa={pool.mfaConfiguration}
+      passkeys={pool.passkeySignIn}
+    />,
   );
 }

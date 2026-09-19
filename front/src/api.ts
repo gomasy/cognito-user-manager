@@ -6,12 +6,14 @@ import type {
   GroupInfo,
   MfaPreference,
   MyProfile,
+  PasskeyCredential,
   PoolInfo,
   PublicInfo,
   SessionInfo,
   TotpSetup,
   UserDetail,
   UserPage,
+  WebAuthnJson,
 } from "./types";
 
 /** Thrown on a 401 so callers can send the user back to the sign-in screen. */
@@ -119,6 +121,8 @@ export const api = {
     request<AuthOutcome>("POST", "/api/auth/login", { username, password }),
   answerChallenge: (answer: ChallengeAnswer) =>
     request<AuthOutcome>("POST", "/api/auth/challenge", answer),
+  passkeyLogin: (username: string) =>
+    request<AuthOutcome>("POST", "/api/auth/passkey", { username }),
   logout: () => request<void>("POST", "/api/auth/logout"),
 
   profile: () => request<MyProfile>("GET", "/api/account"),
@@ -146,6 +150,16 @@ export const api = {
       code,
       deviceName,
     }),
+
+  passkeys: () => request<PasskeyCredential[]>("GET", "/api/account/passkeys"),
+  startPasskey: () => request<WebAuthnJson>("POST", "/api/account/passkeys/new"),
+  addPasskey: (credential: WebAuthnJson) =>
+    request<MessageResponse>("POST", "/api/account/passkeys", { credential }),
+  deletePasskey: (id: string) =>
+    request<MessageResponse>(
+      "DELETE",
+      `/api/account/passkeys/${encodeURIComponent(id)}`,
+    ),
 
   listUsers: (params: { q?: string; field?: string; token?: string }) =>
     request<UserPage>("GET", `/api/admin/users${query(params)}`),

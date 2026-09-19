@@ -75,6 +75,28 @@
   margin-top: $gap * 0.75;
 }
 
+// Registered passkeys: what each one is, and the button that forgets it.
+.passkeys {
+  @include stack($gap * 0.5);
+  list-style: none;
+  margin: 0 0 $gap;
+  padding: 0;
+
+  li {
+    @include row($gap * 0.75);
+    justify-content: space-between;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 0.75rem;
+  }
+
+  &__meta {
+    margin: 0.15rem 0 0;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+}
+
 // The enrolment QR is rendered by the server as an SVG data URI. Its modules
 // are black whatever the colour scheme, so it carries its own light ground.
 .qr {

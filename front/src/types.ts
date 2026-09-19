@@ -25,6 +25,8 @@ export interface PoolInfo {
   usernameIsEmail: boolean;
   /** "OFF", "ON" or "OPTIONAL"; a pool with MFA off rejects every preference. */
   mfaConfiguration: string;
+  /** Whether the pool allows passkeys; false hides every passkey control. */
+  passkeySignIn: boolean;
   selfEditable: AttributeField[];
   adminVisible: AttributeField[];
   editable: AttributeField[];
@@ -37,6 +39,8 @@ export interface PoolInfo {
 
 export interface PublicInfo {
   poolName: string | null;
+  /** Whether to offer passkey sign-in; also false when the pool is unreachable. */
+  passkeySignIn: boolean;
   version: string;
 }
 
@@ -88,6 +92,19 @@ export interface TotpSetup {
   qrDataUri: string | null;
 }
 
+/** One registered passkey; the name is Cognito's own. */
+export interface PasskeyCredential {
+  id: string;
+  name: string;
+  relyingPartyId: string;
+  attachment: string | null;
+  transports: string[];
+  createdAt: string | null;
+}
+
+/** WebAuthn options, passed between Cognito and the browser untouched. */
+export type WebAuthnJson = Record<string, unknown>;
+
 export interface UserPage {
   users: UserSummary[];
   nextToken: string | null;
@@ -106,6 +123,8 @@ export interface Challenge {
   requiredAttributes: string[];
   mfaOptions: string[];
   destination: string | null;
+  /** The WEB_AUTHN options, as the JSON string Cognito issued. */
+  credentialRequestOptions: string | null;
 }
 
 export type AuthOutcome =
@@ -117,5 +136,6 @@ export interface ChallengeAnswer {
   confirmPassword?: string;
   code?: string;
   mfaType?: string;
+  credential?: string;
   userAttributes?: Record<string, string>;
 }
