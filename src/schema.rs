@@ -274,3 +274,36 @@ async fn choice_sign_in(state: &AppState) -> bool {
         }
     }
 }
+
+/// Read-only smoke test against the pool configured in .env.
+/// Opt in with `cargo test -- --ignored --nocapture`.
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    /// Names the halves of the passkey setup separately. Cognito refuses a
+    /// registration with `WebAuthnNotEnabledException` when either is missing
+    /// and does not say which, so this is the way to tell them apart.
+    #[tokio::test]
+    #[ignore = "requires live AWS credentials"]
+    async fn reports_the_passkey_prerequisites() {
+        let state = AppState::for_live_tests().await;
+        let info = state.schema.get(&state, "en").await.expect("pool info");
+        let client = choice_sign_in(&state).await;
+
+        println!(
+            "WEB_AUTHN among the pool's first factors = {}",
+            info.passkeys
+        );
+        println!("ALLOW_USER_AUTH on the app client = {client}");
+        println!(
+            "so the console shows the passkey card = {}, and offers registration = {}",
+            info.passkeys, info.passkeys_usable
+        );
+
+        assert!(
+            info.passkeys_usable || !info.passkeys || !client,
+            "both halves are set, so registration should be offered"
+        );
+    }
+}

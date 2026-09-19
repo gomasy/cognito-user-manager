@@ -356,19 +356,12 @@ mod tests {
 #[cfg(test)]
 mod live_tests {
     use super::*;
-    use crate::config::Config;
     use crate::groups;
-    use std::sync::Arc;
-
-    async fn state() -> AppState {
-        let _ = dotenvy::dotenv();
-        AppState::new(Arc::new(Config::from_env().expect("config"))).await
-    }
 
     #[tokio::test]
     #[ignore = "requires live AWS credentials"]
     async fn reads_the_pool_schema_and_users() {
-        let state = state().await;
+        let state = AppState::for_live_tests().await;
 
         let pool = state
             .schema

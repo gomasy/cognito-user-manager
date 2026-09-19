@@ -54,4 +54,10 @@ impl AppState {
         }))
         .await
     }
+
+    /// A state naming the real pool in `.env`, for the live tests.
+    pub async fn for_live_tests() -> Self {
+        let _ = dotenvy::dotenv();
+        Self::new(Arc::new(Config::from_env().expect("config"))).await
+    }
 }
