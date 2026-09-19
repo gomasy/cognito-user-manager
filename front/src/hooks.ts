@@ -18,6 +18,22 @@ export function useLabel() {
   );
 }
 
+/**
+ * Wording for a name Cognito chose — a status, a challenge, a factor — from
+ * the part of the catalog that holds them. One we have no wording for shows as
+ * itself rather than as a missing key.
+ */
+export function useWording(prefix: string) {
+  const t = useT();
+  return useCallback(
+    (name: string) => {
+      const key = `${prefix}.${name}`;
+      return has(key) ? t(key) : name;
+    },
+    [prefix, t],
+  );
+}
+
 export function useDateFormat() {
   return useCallback((iso: string | null) => {
     if (!iso) return "—";

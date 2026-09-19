@@ -1,5 +1,4 @@
-import { has } from "../i18n";
-import { useT } from "../hooks";
+import { useT, useWording } from "../hooks";
 
 /** Cognito UserStatus values we have wording for; anything else shows raw. */
 const VARIANTS: Record<string, string> = {
@@ -11,14 +10,12 @@ const VARIANTS: Record<string, string> = {
 };
 
 export function StatusBadge({ status }: { status: string | null }) {
-  const t = useT();
+  const label = useWording("status");
   if (!status) return <span className="badge">—</span>;
-  const key = `status.${status}`;
+
   const variant = VARIANTS[status];
   return (
-    <span className={variant ? `badge badge--${variant}` : "badge"}>
-      {has(key) ? t(key) : status}
-    </span>
+    <span className={variant ? `badge badge--${variant}` : "badge"}>{label(status)}</span>
   );
 }
 

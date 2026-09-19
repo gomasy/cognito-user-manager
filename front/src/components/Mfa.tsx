@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useT } from "../hooks";
-import { has } from "../i18n";
+import { useT, useWording } from "../hooks";
 import type { MfaPreference, TotpSetup } from "../types";
 
 /** Cognito's own names for the factors, as they appear in UserMFASettingList. */
@@ -28,8 +27,7 @@ export function MfaSummary({
   preferred: string | null;
 }) {
   const t = useT();
-  const label = (factor: string) =>
-    has(`mfa.${factor}`) ? t(`mfa.${factor}`) : factor;
+  const label = useWording("mfa");
 
   if (enabled.length === 0) return <>{t("account.mfaOff")}</>;
   return (
