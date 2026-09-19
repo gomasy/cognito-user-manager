@@ -7,7 +7,7 @@ frontend.
   pool, and switch their second factors on or off
 - **Groups** (`/admin/groups`) — create and delete groups, and add or remove members
 - **Self-service** (`/account`) — signed-in users edit their own attributes and
-  password, and register an authenticator app for MFA
+  password, register an authenticator app for MFA, and add or remove passkeys
 
 Attribute forms are generated from the pool schema via `DescribeUserPool`, so
 standard and custom attributes both work without touching the code. The UI ships
@@ -20,6 +20,7 @@ English and Japanese, and API messages are localized to match.
 | Server | Rust 2024, axum, tower-http, tower-cookies |
 | AWS | aws-sdk-cognitoidentityprovider, TLS via rustls + ring (no C toolchain) |
 | MFA | `qrcode` renders the enrolment secret as an inline SVG data URI |
+| Passkeys | Cognito's WebAuthn APIs, driven by `navigator.credentials` in the browser |
 | Server i18n | rust-i18n, catalogs in `locales/*.yml` |
 | Frontend | React 19 + TypeScript, bundled by Parcel |
 | Styles | SCSS, tokens and mixins under `front/src/styles` |
@@ -100,14 +101,24 @@ app client can be reused as is.
 
 1. **Enable `ALLOW_ADMIN_USER_PASSWORD_AUTH` and `ALLOW_REFRESH_TOKEN_AUTH`**
    on the app client. Sign-in uses `AdminInitiateAuth`, so both are mandatory.
-2. **Create the admin group.** Users in `COGNITO_ADMIN_GROUP` (default `admin`)
+2. **For passkeys, switch on choice-based sign-in.** Add `WEB_AUTHN` to the
+   pool's `AllowedFirstAuthFactors` (Cognito requires at least one other factor
+   beside it, normally `PASSWORD`), enable `ALLOW_USER_AUTH` on the app client,
+   and set the relying party ID under **Authentication methods → Passkey** to
+   the domain this console is served from: a passkey is bound to that domain
+   and a browser refuses one issued for another. Passkeys need the Essentials
+   feature plan or higher, and a secure context — HTTPS, or `localhost` while
+   developing. Leaving all of this off simply hides every passkey control.
+3. **Create the admin group.** Users in `COGNITO_ADMIN_GROUP` (default `admin`)
    may open `/admin`; everyone else is sent to `/account`.
-3. **Attach this IAM policy** to the principal whose credentials the app uses.
-   It lists exactly the 18 SigV4-signed operations the app calls. The
+4. **Attach this IAM policy** to the principal whose credentials the app uses.
+   It lists exactly the 25 SigV4-signed operations the app calls. The
    self-service APIs (`GetUser`, `UpdateUserAttributes`, `ChangePassword`,
    `DeleteUserAttributes`, `GetUserAttributeVerificationCode`,
-   `VerifyUserAttribute`, `GlobalSignOut`) are sent unsigned and authorised by
-   the access token, so they need no IAM permission. Fetching the pool JWKS is a
+   `VerifyUserAttribute`, `GlobalSignOut`, and the four passkey operations
+   `StartWebAuthnRegistration`, `CompleteWebAuthnRegistration`,
+   `ListWebAuthnCredentials` and `DeleteWebAuthnCredential`) are sent unsigned
+   and authorised by the access token, so they need no IAM permission. Fetching the pool JWKS is a
    public HTTPS request and needs none either.
 
 ```json
@@ -123,6 +134,7 @@ app client can be reused as is.
         "cognito-idp:AdminInitiateAuth",
         "cognito-idp:AdminRespondToAuthChallenge",
         "cognito-idp:AdminGetUser",
+        "cognito-idp:AdminGetUserAuthFactors",
         "cognito-idp:AdminCreateUser",
         "cognito-idp:AdminDeleteUser",
         "cognito-idp:AdminUpdateUserAttributes",
@@ -150,8 +162,11 @@ app client can be reused as is.
 
 Dropping the mutating actions leaves a read-only console: keep
 `DescribeUserPool`, `ListUsers`, `ListGroups`, `AdminGetUser`,
-`AdminListGroupsForUser`, `AdminInitiateAuth` and `AdminRespondToAuthChallenge`
-(the last two are needed to sign in at all). Scope `Resource` to the single user
+`AdminGetUserAuthFactors`, `AdminListGroupsForUser`, `AdminInitiateAuth` and
+`AdminRespondToAuthChallenge` (the last two are needed to sign in at all).
+`AdminGetUserAuthFactors` is the one action the console can do without: it only
+tells the user page which sign-in factors an account has, and without it that
+row is left out rather than the page failing. Scope `Resource` to the single user
 pool ARN rather than `*`. Self-service actions — the caller's own profile, their
 password and their own second factors — use access-token APIs, which the app
 client authorizes; they need no IAM action of their own.
@@ -176,6 +191,7 @@ src/
   users.rs               read models, search field allowlist and filter escaping
   groups.rs              groups, their members, and every call that names one
   mfa.rs                 factor preferences and TOTP enrolment URIs
+  passkey.rs             WebAuthn credentials and the JSON they travel as
   static_files.rs        app shell, catalogs and cache-control
   handlers/              meta.rs, auth.rs, account.rs, admin.rs, groups.rs
 front/
@@ -184,6 +200,7 @@ front/
     index.tsx  App.tsx   entry and routing
     api.ts               typed fetch layer, sends X-App-Lang
     i18n.ts              browser language detection, catalog loading, t()
+    webauthn.ts          the browser's passkey prompts, and base64url either way
     hooks.ts             useT, useToast, history routing
     types.ts             mirrors the API payloads
     components/          Login, Layout, Account, AdminUsers, AdminGroups, Mfa, …
@@ -200,6 +217,7 @@ failures return `{ "error": "..." }` with a 4xx status.
 GET    /api/public                                pool name and version, before sign-in
 POST   /api/auth/login                            sign in, or return a challenge
 POST   /api/auth/challenge                        answer a challenge
+POST   /api/auth/passkey                          start a sign-in with a passkey
 POST   /api/auth/logout
 GET    /api/session                               who the caller is
 GET    /api/pool                                  schema, editable subsets, groups, search fields
@@ -211,6 +229,10 @@ POST   /api/account/verify
 PUT    /api/account/mfa                           own second factors on or off
 POST   /api/account/mfa/totp                      start authenticator enrolment
 POST   /api/account/mfa/totp/verify               confirm a code and turn it on
+GET    /api/account/passkeys                      own registered passkeys
+POST   /api/account/passkeys/new                  start registering one
+POST   /api/account/passkeys                      finish registering one
+DELETE /api/account/passkeys/{credentialId}       forget one
 GET    /api/admin/users                           ?q=&field=&token=
 POST   /api/admin/users
 GET    /api/admin/users/{username}
@@ -240,6 +262,15 @@ DELETE /api/admin/groups/{group}/users/{username}
   of client-side JavaScript.
 - First sign-in (`NEW_PASSWORD_REQUIRED`) and SMS / email / TOTP MFA are handled.
   The Cognito challenge session stays in a cookie and is never sent to the browser.
+- Passkey sign-in runs the same `AdminInitiateAuth`, with the choice-based
+  `USER_AUTH` flow asking for `WEB_AUTHN` by name. The options the browser signs
+  travel in the response body rather than the challenge cookie, which has 4 KB
+  to hold everything and spends most of it on the Cognito session. A user with
+  no passkey is told so, rather than being dropped into whichever factor Cognito
+  offers instead.
+- Registering a passkey is two calls around a prompt only the browser can
+  answer, both authorized by the access token, and nothing is stored until the
+  second one goes through: a cancelled prompt leaves the account as it was.
 - Every request verifies the ID token against the pool JWKS: RS256 signature,
   expiry, issuer, audience and `token_use`. Expired tokens are refreshed inline
   with the refresh token; a failed refresh clears the cookies.
@@ -299,6 +330,10 @@ DELETE /api/admin/groups/{group}/users/{username}
 - An admin can switch a user's second factors on or off and forget a registered
   authenticator app, but cannot enrol one for them: the secret belongs to the
   user, who registers it on their own account screen.
+- Passkeys go further: Cognito exposes them to the signed-in user alone, so the
+  user page can say whether an account has one but can neither register nor
+  remove it. A user who has lost their authenticator signs in another way and
+  removes the passkey themselves.
 - A group's name, description and precedence are set at creation; editing them
   afterwards is not exposed.
 

@@ -266,3 +266,9 @@ stable paths need clearing.
 - **Responses are buffered** by `lambda_http`, against a 6 MB limit. The largest
   thing served is the ~220 kB bundle, and only until CloudFront has it cached.
 - `POST /api/auth/logout` answers `204`, which passes through unchanged.
+- **Passkeys are bound to a domain.** The relying party ID set on the user pool
+  has to be the host the browser sees — the distribution's own
+  `d111111abcdef8.cloudfront.net`, or the custom domain in front of it — or the
+  browser refuses to make or use one. Putting a custom domain in front later
+  changes that host, and every passkey already registered has to be registered
+  again.
