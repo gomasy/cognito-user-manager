@@ -180,6 +180,7 @@
   "passkey.none": "No passkey is registered yet.",
   "passkey.platform": "This device",
   "passkey.register": "Register a passkey",
+  "passkey.registerDisabled": "New passkeys cannot be registered here. The ones already registered still work and can be removed.",
   "passkey.remove": "Remove",
   "passkey.unsupported": "This browser cannot use passkeys.",
   "search.cognito:user_status": "Status",

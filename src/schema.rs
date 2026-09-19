@@ -2,7 +2,7 @@ use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use aws_sdk_cognitoidentityprovider::types::{
-    AttributeDataType, AuthFactorType, SchemaAttributeType,
+    AttributeDataType, AuthFactorType, ExplicitAuthFlowsType, SchemaAttributeType,
 };
 use serde::Serialize;
 
@@ -90,9 +90,15 @@ pub struct PoolInfo {
     /// where Cognito rejects a new user that comes with one.
     #[serde(skip)]
     pub password_sign_in: bool,
-    /// Whether the pool offers passkeys as a first factor. The screens hide
-    /// every passkey control when it does not.
-    pub passkey_sign_in: bool,
+    /// `WEB_AUTHN` among the pool's first factors. The account screen shows the
+    /// passkey card on this alone: listing and removing credentials are
+    /// access-token APIs that work whatever the app client allows, and a user
+    /// who has one registered must be able to get rid of it.
+    pub passkeys: bool,
+    /// The above *and* `ALLOW_USER_AUTH` on the app client, which is what
+    /// registering a passkey and signing in with one both need. Cognito refuses
+    /// either half-configured, so the screens offer neither without this.
+    pub passkeys_usable: bool,
 }
 
 impl PoolInfo {
@@ -199,6 +205,18 @@ impl SchemaCache {
                 .then_with(|| a.name.cmp(&b.name))
         });
 
+        // The first factors the pool allows. An empty list — which is also what
+        // a pool that never opted into choice-based authentication answers —
+        // leaves passwords as the only one.
+        let factors = policies
+            .and_then(|p| p.sign_in_policy())
+            .map(|policy| policy.allowed_first_auth_factors())
+            .unwrap_or_default();
+        let passkeys = factors.contains(&AuthFactorType::WebAuthn);
+        // Asked only where the pool allows passkeys, so a deployment that has
+        // none never makes the call.
+        let passkeys_usable = passkeys && choice_sign_in(state).await;
+
         let info = PoolInfo {
             id: state.config.user_pool_id.clone(),
             name: pool.and_then(|p| p.name()).map(str::to_string),
@@ -216,28 +234,43 @@ impl SchemaCache {
                 .and_then(|p| p.password_policy())
                 .map(password::Policy::from)
                 .unwrap_or_default(),
-            password_sign_in: policies
-                .and_then(|p| p.sign_in_policy())
-                .map(|policy| policy.allowed_first_auth_factors())
-                // An empty list means the pool never opted into choice-based
-                // authentication, which leaves passwords as the only factor.
-                .is_none_or(|factors| {
-                    factors.is_empty() || factors.contains(&AuthFactorType::Password)
-                }),
-            // The other way around: passkeys exist only in choice-based
-            // authentication, so a pool that named no factors has none.
-            passkey_sign_in: policies
-                .and_then(|p| p.sign_in_policy())
-                .is_some_and(|policy| {
-                    policy
-                        .allowed_first_auth_factors()
-                        .contains(&AuthFactorType::WebAuthn)
-                }),
+            password_sign_in: factors.is_empty() || factors.contains(&AuthFactorType::Password),
+            passkeys,
+            passkeys_usable,
         };
 
         if let Ok(mut guard) = self.inner.write() {
             *guard = Some((info.clone(), Instant::now()));
         }
         Ok(info)
+    }
+}
+
+/// `ALLOW_USER_AUTH` on the app client: choice-based authentication, the only
+/// flow passkeys exist in. See `PoolInfo::passkeys_usable`.
+///
+/// Best effort, because reading the client is an IAM action of its own and a
+/// deployment whose policy predates it would otherwise lose passkeys
+/// altogether: a call that fails for any reason leaves the pool's own setting
+/// to decide, as it did before this check existed. Warned about rather than
+/// logged quietly, since the guess then stands for the cache lifetime.
+async fn choice_sign_in(state: &AppState) -> bool {
+    match state
+        .cognito
+        .describe_user_pool_client()
+        .user_pool_id(&state.config.user_pool_id)
+        .client_id(&state.config.client_id)
+        .send()
+        .await
+    {
+        Ok(response) => response
+            .user_pool_client()
+            .map(|client| client.explicit_auth_flows())
+            .unwrap_or_default()
+            .contains(&ExplicitAuthFlowsType::AllowUserAuth),
+        Err(error) => {
+            tracing::warn!(?error, "app client flows unreadable; assuming passkeys");
+            true
+        }
     }
 }

@@ -25,8 +25,10 @@ export interface PoolInfo {
   usernameIsEmail: boolean;
   /** "OFF", "ON" or "OPTIONAL"; a pool with MFA off rejects every preference. */
   mfaConfiguration: string;
-  /** Whether the pool allows passkeys; false hides every passkey control. */
-  passkeySignIn: boolean;
+  /** Whether the pool allows passkeys; false hides the passkey card. */
+  passkeys: boolean;
+  /** Whether one can also be registered; false leaves the card read-only. */
+  passkeysUsable: boolean;
   selfEditable: AttributeField[];
   adminVisible: AttributeField[];
   editable: AttributeField[];

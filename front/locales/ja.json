@@ -180,6 +180,7 @@
   "passkey.none": "パスキーはまだ登録されていません。",
   "passkey.platform": "この端末",
   "passkey.register": "パスキーを登録",
+  "passkey.registerDisabled": "この環境では新しいパスキーを登録できません。登録済みのパスキーはそのまま利用・削除できます。",
   "passkey.remove": "削除",
   "passkey.unsupported": "このブラウザーはパスキーに対応していません。",
   "search.cognito:user_status": "ステータス",

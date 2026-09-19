@@ -38,8 +38,11 @@ pub struct PoolResponse {
     /// `OFF`, `ON` or `OPTIONAL`, so the MFA forms can say when the pool
     /// itself has second factors switched off.
     mfa_configuration: String,
-    /// Whether the account screen offers to register a passkey.
-    passkey_sign_in: bool,
+    /// Whether the account screen shows the passkey card, which lists and
+    /// removes credentials.
+    passkeys: bool,
+    /// Whether it also offers to register one. See `PoolInfo::passkeys_usable`.
+    passkeys_usable: bool,
     /// The subset each screen may edit, resolved server-side so a client
     /// cannot widen it by asking for a different list.
     self_editable: Vec<AttributeField>,
@@ -68,7 +71,8 @@ pub async fn pool(
         name: pool.name.clone(),
         username_is_email: pool.username_is_email,
         mfa_configuration: pool.mfa_configuration.clone(),
-        passkey_sign_in: pool.passkey_sign_in,
+        passkeys: pool.passkeys,
+        passkeys_usable: pool.passkeys_usable,
         self_editable: pool.self_editable(),
         admin_visible: if admin {
             pool.admin_visible()
@@ -104,7 +108,7 @@ pub async fn public_info(State(state): State<AppState>, Lang(lang): Lang) -> Jso
 
     Json(PublicInfo {
         pool_name: pool.as_ref().and_then(|pool| pool.name.clone()),
-        passkey_sign_in: pool.is_some_and(|pool| pool.passkey_sign_in),
+        passkey_sign_in: pool.is_some_and(|pool| pool.passkeys_usable),
         version: crate::VERSION,
     })
 }

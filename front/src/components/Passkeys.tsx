@@ -4,12 +4,20 @@ import { errorText, useAction, useDateFormat, useT, useToast, useWording } from 
 import type { PasskeyCredential } from "../types";
 import * as webauthn from "../webauthn";
 
+interface Props {
+  /**
+   * Whether a passkey can be registered here. False leaves the card listing and
+   * removing the ones a user already has, which the pool alone allows.
+   */
+  usable: boolean;
+}
+
 /**
  * The passkeys on the caller's own account. Registering is two calls around a
  * prompt only the browser can answer, and nothing is stored until the second
  * one goes through.
  */
-export function PasskeyCard() {
+export function PasskeyCard({ usable }: Props) {
   const t = useT();
   const label = useWording("passkey");
   const formatDate = useDateFormat();
@@ -51,7 +59,12 @@ export function PasskeyCard() {
       .filter(Boolean)
       .join(" · ");
 
-  const supported = webauthn.isSupported();
+  // The two reasons registering cannot go ahead, in the order a user can act on.
+  const blocked = !webauthn.isSupported()
+    ? "passkey.unsupported"
+    : !usable
+      ? "passkey.registerDisabled"
+      : null;
 
   return (
     <div className="card">
@@ -85,13 +98,13 @@ export function PasskeyCard() {
         </ul>
       )}
 
-      {!supported && <p className="alert alert--warn">{t("passkey.unsupported")}</p>}
+      {blocked && <p className="alert alert--warn">{t(blocked)}</p>}
 
       <div className="row row--gap">
         <button
           type="button"
           className="btn btn--primary"
-          disabled={busy || !supported}
+          disabled={busy || blocked !== null}
           onClick={register}
         >
           {t("passkey.register")}

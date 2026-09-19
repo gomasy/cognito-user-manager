@@ -106,13 +106,18 @@ app client can be reused as is.
    beside it, normally `PASSWORD`), enable `ALLOW_USER_AUTH` on the app client,
    and set the relying party ID under **Authentication methods → Passkey** to
    the domain this console is served from: a passkey is bound to that domain
-   and a browser refuses one issued for another. Passkeys need the Essentials
+   and a browser refuses one issued for another. Both switches are needed: with
+   the pool alone, Cognito answers every passkey registration with
+   `WebAuthnNotEnabledException`, so the console reads the app client too and
+   offers neither registration nor passkey sign-in until it allows
+   `ALLOW_USER_AUTH` — the account screen still lists and removes the passkeys a
+   user already has, which needs neither setting. Passkeys need the Essentials
    feature plan or higher, and a secure context — HTTPS, or `localhost` while
    developing. Leaving all of this off simply hides every passkey control.
 3. **Create the admin group.** Users in `COGNITO_ADMIN_GROUP` (default `admin`)
    may open `/admin`; everyone else is sent to `/account`.
 4. **Attach this IAM policy** to the principal whose credentials the app uses.
-   It lists exactly the 25 SigV4-signed operations the app calls. The
+   It lists exactly the 26 SigV4-signed operations the app calls. The
    self-service APIs (`GetUser`, `UpdateUserAttributes`, `ChangePassword`,
    `DeleteUserAttributes`, `GetUserAttributeVerificationCode`,
    `VerifyUserAttribute`, `GlobalSignOut`, and the four passkey operations
@@ -129,6 +134,7 @@ app client can be reused as is.
       "Effect": "Allow",
       "Action": [
         "cognito-idp:DescribeUserPool",
+        "cognito-idp:DescribeUserPoolClient",
         "cognito-idp:ListUsers",
         "cognito-idp:ListGroups",
         "cognito-idp:AdminInitiateAuth",
@@ -162,11 +168,14 @@ app client can be reused as is.
 
 Dropping the mutating actions leaves a read-only console: keep
 `DescribeUserPool`, `ListUsers`, `ListGroups`, `AdminGetUser`,
-`AdminGetUserAuthFactors`, `AdminListGroupsForUser`, `AdminInitiateAuth` and
-`AdminRespondToAuthChallenge` (the last two are needed to sign in at all).
-`AdminGetUserAuthFactors` is the one action the console can do without: it only
-tells the user page which sign-in factors an account has, and without it that
-row is left out rather than the page failing. Scope `Resource` to the single user
+`DescribeUserPoolClient`, `AdminGetUserAuthFactors`, `AdminListGroupsForUser`,
+`AdminInitiateAuth` and `AdminRespondToAuthChallenge` (the last two are needed to
+sign in at all).
+Two actions the console can do without: `AdminGetUserAuthFactors` only tells the
+user page which sign-in factors an account has, and without it that row is left
+out rather than the page failing; `DescribeUserPoolClient` only confirms the app
+client half of the passkey setup in step 2, and without it the pool's own setting
+decides alone. Scope `Resource` to the single user
 pool ARN rather than `*`. Self-service actions — the caller's own profile, their
 password and their own second factors — use access-token APIs, which the app
 client authorizes; they need no IAM action of their own.

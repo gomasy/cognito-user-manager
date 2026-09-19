@@ -205,7 +205,8 @@ function Routes({
     <Account
       fields={pool.selfEditable}
       poolMfa={pool.mfaConfiguration}
-      passkeys={pool.passkeySignIn}
+      passkeys={pool.passkeys}
+      passkeysUsable={pool.passkeysUsable}
     />,
   );
 }

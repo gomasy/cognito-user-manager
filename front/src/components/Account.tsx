@@ -17,9 +17,11 @@ interface Props {
   poolMfa: string;
   /** Whether the pool allows passkeys; the card is hidden when it does not. */
   passkeys: boolean;
+  /** Whether a new one can be registered, which also needs the app client. */
+  passkeysUsable: boolean;
 }
 
-export function Account({ fields, poolMfa, passkeys }: Props) {
+export function Account({ fields, poolMfa, passkeys, passkeysUsable }: Props) {
   const t = useT();
   const label = useLabel();
   const { notify } = useToast();
@@ -136,7 +138,7 @@ export function Account({ fields, poolMfa, passkeys }: Props) {
         <TotpSetupBlock busy={busy} onStart={startTotp} onVerify={verifyTotp} />
       </MfaCard>
 
-      {passkeys && <PasskeyCard />}
+      {passkeys && <PasskeyCard usable={passkeysUsable} />}
 
       <div className="card">
         <h2>{t("account.info")}</h2>
