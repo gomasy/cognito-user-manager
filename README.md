@@ -53,14 +53,12 @@ cargo build --release
 ```
 
 The server reads `front/dist` and `front/locales` relative to its working
-directory, and the same two directories ship in the Lambda zip. For AWS Lambda,
-see [docs/lambda.md](docs/lambda.md): the `lambda` cargo feature adds the Lambda
-runtime alongside the server, and which one serves is decided at startup from
-the environment, so one binary covers both.
+directory, and the same two ship in the Lambda zip. For AWS Lambda see
+[docs/lambda.md](docs/lambda.md): the `lambda` cargo feature adds the Lambda
+runtime alongside the server, and startup decides which one serves.
 
-On SIGTERM or SIGINT the server stops accepting connections and lets in-flight
-requests finish, so a container stop or a `systemctl restart` does not cut one
-short. Lambda uses neither signal; there the runtime owns the lifecycle.
+On SIGTERM or SIGINT the server lets in-flight requests finish before stopping.
+Lambda uses neither signal; there the runtime owns the lifecycle.
 
 ### Environment variables
 
@@ -86,45 +84,34 @@ variables and running under an IAM role works unchanged.
 
 ### Why an app client is needed
 
-**Managing users does not require an app client.** The 16 admin APIs this app
-calls (`ListUsers`, `AdminCreateUser`, `AdminUpdateUserAttributes`, …) take no
-`ClientId` and work with IAM-signed requests alone, and the self-service APIs
-(`GetUser`, `UpdateUserAttributes`, `ChangePassword`) only need an access token.
+Only sign-in needs one. `AdminInitiateAuth` and `AdminRespondToAuthChallenge`
+take a `ClientId`, and Cognito offers no way to verify a password from IAM
+credentials alone; the admin APIs and the access-token self-service APIs need
+none.
 
-Two APIs need one: `AdminInitiateAuth` and `AdminRespondToAuthChallenge`.
-Cognito exposes no way to verify a user's password from IAM credentials alone,
-so any app with a sign-in screen needs an app client. A minimal one is enough —
-no client secret, no hosted UI, no callback URLs, no OAuth scopes. An existing
-app client can be reused as is.
+A minimal client is enough — no secret, no hosted UI, no callback URLs, no OAuth
+scopes — and an existing one can be reused as is.
 
 ### Steps
 
 1. **Enable `ALLOW_ADMIN_USER_PASSWORD_AUTH` and `ALLOW_REFRESH_TOKEN_AUTH`**
    on the app client. Sign-in uses `AdminInitiateAuth`, so both are mandatory.
 2. **For passkeys, switch on choice-based sign-in.** Add `WEB_AUTHN` to the
-   pool's `AllowedFirstAuthFactors` (Cognito requires at least one other factor
-   beside it, normally `PASSWORD`), enable `ALLOW_USER_AUTH` on the app client,
-   and set the relying party ID under **Authentication methods → Passkey** to
-   the domain this console is served from: a passkey is bound to that domain
-   and a browser refuses one issued for another. Both switches are needed: with
-   the pool alone, Cognito answers every passkey registration with
-   `WebAuthnNotEnabledException`, so the console reads the app client too and
-   offers neither registration nor passkey sign-in until it allows
-   `ALLOW_USER_AUTH` — the account screen still lists and removes the passkeys a
-   user already has, which needs neither setting. Passkeys need the Essentials
-   feature plan or higher, and a secure context — HTTPS, or `localhost` while
-   developing. Leaving all of this off simply hides every passkey control.
+   pool's `AllowedFirstAuthFactors` (Cognito requires another factor beside it,
+   normally `PASSWORD`), enable `ALLOW_USER_AUTH` on the app client, and set the
+   relying party ID under **Authentication methods → Passkey** to the domain this
+   console is served from — a browser refuses a passkey issued for another. Both
+   switches are needed; with the pool alone, registration fails with
+   `WebAuthnNotEnabledException`. Passkeys also need the Essentials feature plan
+   or higher and a secure context: HTTPS, or `localhost` while developing.
+   Anything missing hides the passkey controls, except the list of ones already
+   registered, which needs neither setting.
 3. **Create the admin group.** Users in `COGNITO_ADMIN_GROUP` (default `admin`)
    may open `/admin`; everyone else is sent to `/account`.
 4. **Attach this IAM policy** to the principal whose credentials the app uses.
    It lists exactly the 26 SigV4-signed operations the app calls. The
-   self-service APIs (`GetUser`, `UpdateUserAttributes`, `ChangePassword`,
-   `DeleteUserAttributes`, `GetUserAttributeVerificationCode`,
-   `VerifyUserAttribute`, `GlobalSignOut`, and the four passkey operations
-   `StartWebAuthnRegistration`, `CompleteWebAuthnRegistration`,
-   `ListWebAuthnCredentials` and `DeleteWebAuthnCredential`) are sent unsigned
-   and authorised by the access token, so they need no IAM permission. Fetching the pool JWKS is a
-   public HTTPS request and needs none either.
+   self-service APIs are authorised by the access token instead, and the pool
+   JWKS is a public HTTPS request, so neither needs an IAM permission.
 
 ```json
 {
@@ -166,19 +153,15 @@ app client can be reused as is.
 }
 ```
 
+Scope `Resource` to the single user pool ARN rather than `*`.
+
 Dropping the mutating actions leaves a read-only console: keep
-`DescribeUserPool`, `ListUsers`, `ListGroups`, `AdminGetUser`,
-`DescribeUserPoolClient`, `AdminGetUserAuthFactors`, `AdminListGroupsForUser`,
-`AdminInitiateAuth` and `AdminRespondToAuthChallenge` (the last two are needed to
-sign in at all).
-Two actions the console can do without: `AdminGetUserAuthFactors` only tells the
-user page which sign-in factors an account has, and without it that row is left
-out rather than the page failing; `DescribeUserPoolClient` only confirms the app
-client half of the passkey setup in step 2, and without it the pool's own setting
-decides alone. Scope `Resource` to the single user
-pool ARN rather than `*`. Self-service actions — the caller's own profile, their
-password and their own second factors — use access-token APIs, which the app
-client authorizes; they need no IAM action of their own.
+`DescribeUserPool`, `DescribeUserPoolClient`, `ListUsers`, `ListGroups`,
+`AdminGetUser`, `AdminGetUserAuthFactors`, `AdminListGroupsForUser`,
+`AdminInitiateAuth` and `AdminRespondToAuthChallenge` (the last two to sign in
+at all). Two of those are optional: without `AdminGetUserAuthFactors` the user
+page leaves out the sign-in factors row, and without `DescribeUserPoolClient`
+the pool's own setting decides the passkey controls alone.
 
 ## Layout
 
@@ -271,27 +254,21 @@ DELETE /api/admin/groups/{group}/users/{username}
   of client-side JavaScript.
 - First sign-in (`NEW_PASSWORD_REQUIRED`) and SMS / email / TOTP MFA are handled.
   The Cognito challenge session stays in a cookie and is never sent to the browser.
-- Passkey sign-in runs the same `AdminInitiateAuth`, with the choice-based
-  `USER_AUTH` flow asking for `WEB_AUTHN` by name. The options the browser signs
-  travel in the response body rather than the challenge cookie, which has 4 KB
-  to hold everything and spends most of it on the Cognito session. A user with
-  no passkey is told so, rather than being dropped into whichever factor Cognito
-  offers instead.
-- Registering a passkey is two calls around a prompt only the browser can
-  answer, both authorized by the access token, and nothing is stored until the
-  second one goes through: a cancelled prompt leaves the account as it was.
+- Passkey sign-in runs the same `AdminInitiateAuth`, with the `USER_AUTH` flow
+  asking for `WEB_AUTHN` by name. The options the browser signs travel in the
+  response body, not the 4 KB challenge cookie. A user with no passkey is told
+  so rather than dropped into another factor.
+- Registering a passkey is two access-token calls around a browser prompt, and
+  nothing is stored until the second goes through: a cancelled prompt leaves the
+  account as it was.
 - Every request verifies the ID token against the pool JWKS: RS256 signature,
   expiry, issuer, audience and `token_use`. Expired tokens are refreshed inline
   with the refresh token; a failed refresh clears the cookies.
-- The pool JWKS is cached for an hour. A token naming an unknown `kid` refetches
-  it, so a key rotation is picked up without waiting out the cache, but at most
-  once a minute — otherwise a stream of made-up kids would be one outbound
-  request each.
+- The pool JWKS is cached for an hour. An unknown `kid` refetches it, so a key
+  rotation is picked up without waiting out the cache, but at most once a minute.
 - Two issuer hosts are accepted, `cognito-idp.<region>.amazonaws.com` and
-  `issuer-cognito-idp.<region>.amazonaws.com`. Cognito stamps tokens with either
-  depending on the pool, and the pool's own discovery document can advertise the
-  first while the tokens carry the second. Both are AWS-controlled and name the
-  configured pool, so accepting both does not widen who is trusted.
+  `issuer-cognito-idp.<region>.amazonaws.com`: Cognito stamps tokens with either
+  depending on the pool. Both are AWS-controlled and name the configured pool.
 - The `Session` and `AdminSession` extractors are the guards, so a handler
   cannot be written that forgets one.
 - Which attributes each screen may write is decided server-side. A patch naming
@@ -304,10 +281,8 @@ DELETE /api/admin/groups/{group}/users/{username}
 - Cookies are `SameSite=Lax` and every mutation is a non-GET JSON request, so a
   cross-site form post cannot reach them.
 - `Secure` is set when the request arrives over HTTPS, read from
-  `X-Forwarded-Proto`, then `Forwarded`, then the request URI.
-  A proxy that terminates TLS without forwarding the scheme needs
-  `SECURE_COOKIES=1`; a Secure cookie sent over plain HTTP is dropped by the
-  client, which looks like a sign-in that immediately loses its session.
+  `X-Forwarded-Proto`, then `Forwarded`, then the request URI. A proxy that
+  terminates TLS without forwarding the scheme needs `SECURE_COOKIES=1`.
 
 ### Safeguards
 
@@ -341,8 +316,7 @@ DELETE /api/admin/groups/{group}/users/{username}
   user, who registers it on their own account screen.
 - Passkeys go further: Cognito exposes them to the signed-in user alone, so the
   user page can say whether an account has one but can neither register nor
-  remove it. A user who has lost their authenticator signs in another way and
-  removes the passkey themselves.
+  remove it.
 - A group's name, description and precedence are set at creation; editing them
   afterwards is not exposed.
 
@@ -357,13 +331,12 @@ cd front && npm run typecheck
 cd front && npm run build
 ```
 
-One ignored test signs in for real and verifies the resulting ID token, which is
-the only way to confirm which issuer the pool actually stamps:
+One ignored test signs in for real and verifies the resulting ID token, the only
+way to confirm which issuer the pool stamps:
 
 ```bash
 TEST_USERNAME=... TEST_PASSWORD=... cargo test -- --ignored --nocapture
 ```
 
-A rejected token is logged at `warn` with the reason and the claims it carried,
-so a mismatch shows up without a debugger. `RUST_LOG=cognito_user_manager=debug`
-additionally logs which session cookies arrived.
+A rejected token is logged at `warn` with the reason and its claims.
+`RUST_LOG=cognito_user_manager=debug` also logs which session cookies arrived.
