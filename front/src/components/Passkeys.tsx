@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { errorText, useAction, useDateFormat, useT, useToast, useWording } from "../hooks";
+import { useAction, useDateFormat, useT, useToast, useWording } from "../hooks";
 import type { PasskeyCredential } from "../types";
 import * as webauthn from "../webauthn";
 
@@ -21,7 +21,7 @@ export function PasskeyCard({ usable }: Props) {
   const t = useT();
   const label = useWording("passkey");
   const formatDate = useDateFormat();
-  const { notify } = useToast();
+  const { fail } = useToast();
   const [credentials, setCredentials] = useState<PasskeyCredential[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -35,7 +35,7 @@ export function PasskeyCard({ usable }: Props) {
   const start = () =>
     load().catch((e) => {
       setFailed(true);
-      notify(errorText(e), "error");
+      fail(e);
     });
 
   useEffect(() => {

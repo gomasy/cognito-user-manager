@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { errorText, useAction, useDateFormat, useT, useToast } from "../hooks";
+import { useAction, useDateFormat, useT, useToast } from "../hooks";
 import type { GroupInfo } from "../types";
 import { Link, groupRoute } from "./Link";
 
@@ -14,7 +14,7 @@ interface Props {
 export function AdminGroups({ adminGroup, onGroupsChanged }: Props) {
   const t = useT();
   const formatDate = useDateFormat();
-  const { notify } = useToast();
+  const { fail } = useToast();
 
   const [groups, setGroups] = useState<GroupInfo[] | null>(null);
 
@@ -24,9 +24,9 @@ export function AdminGroups({ adminGroup, onGroupsChanged }: Props) {
     } catch (e) {
       // Leaving this null would sit on "loading" with nothing in flight.
       setGroups([]);
-      notify(errorText(e), "error");
+      fail(e);
     }
-  }, [notify]);
+  }, [fail]);
 
   useEffect(() => {
     void load();

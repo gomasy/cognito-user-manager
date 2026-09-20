@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { errorText, useAction, useLabel, useT, useToast } from "../hooks";
+import { useAction, useLabel, useT, useToast } from "../hooks";
 import type { AttributeField, MyProfile } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 import { MfaCard, MfaSummary, TotpSetupBlock } from "./Mfa";
@@ -24,7 +24,7 @@ interface Props {
 export function Account({ fields, poolMfa, passkeys, passkeysUsable }: Props) {
   const t = useT();
   const label = useLabel();
-  const { notify } = useToast();
+  const { fail } = useToast();
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [failed, setFailed] = useState(false);
   const [draft, setDraft] = useState<Draft>({});
@@ -41,7 +41,7 @@ export function Account({ fields, poolMfa, passkeys, passkeysUsable }: Props) {
   const start = () =>
     load().catch((e) => {
       setFailed(true);
-      notify(errorText(e), "error");
+      fail(e);
     });
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { errorText, useAction, useDateFormat, useNavigate, useT, useToast } from "../hooks";
+import { useAction, useDateFormat, useNavigate, useT, useToast } from "../hooks";
 import type { GroupInfo, UserSummary } from "../types";
 import { EnabledBadge, StatusBadge } from "./Badge";
 import { Link, userRoute } from "./Link";
@@ -17,7 +17,7 @@ export function AdminGroupDetail({ group, adminGroup, onGroupsChanged }: Props) 
   const t = useT();
   const navigate = useNavigate();
   const formatDate = useDateFormat();
-  const { notify } = useToast();
+  const { fail } = useToast();
 
   const [info, setInfo] = useState<GroupInfo | null>(null);
   const [missing, setMissing] = useState(false);
@@ -32,9 +32,9 @@ export function AdminGroupDetail({ group, adminGroup, onGroupsChanged }: Props) 
       .then(setInfo)
       .catch((e) => {
         setMissing(true);
-        notify(errorText(e), "error");
+        fail(e);
       });
-  }, [group, notify]);
+  }, [group, fail]);
 
   const loadMembers = useCallback(async () => {
     setLoading(true);
@@ -43,11 +43,11 @@ export function AdminGroupDetail({ group, adminGroup, onGroupsChanged }: Props) 
       setMembers(page.users);
       setNextToken(page.nextToken);
     } catch (e) {
-      notify(errorText(e), "error");
+      fail(e);
     } finally {
       setLoading(false);
     }
-  }, [group, token, notify]);
+  }, [group, token, fail]);
 
   useEffect(() => {
     void loadMembers();

@@ -55,6 +55,8 @@ export interface Toast {
 export interface ToastApi {
   toasts: Toast[];
   notify: (message: string, kind?: Toast["kind"]) => void;
+  /** Reports a rejected call. */
+  fail: (reason: unknown) => void;
   dismiss: (id: number) => void;
 }
 
@@ -91,7 +93,12 @@ export function useToastState(): ToastApi {
     [dismiss],
   );
 
-  return { toasts, notify, dismiss };
+  const fail = useCallback(
+    (reason: unknown) => notify(errorText(reason), "error"),
+    [notify],
+  );
+
+  return { toasts, notify, fail, dismiss };
 }
 
 export interface ActionApi {
@@ -115,7 +122,7 @@ export interface ActionApi {
  * report the outcome as a toast, and reload what the call changed.
  */
 export function useAction(reload?: () => Promise<unknown>): ActionApi {
-  const { notify } = useToast();
+  const { notify, fail } = useToast();
   const [busy, setBusy] = useState(false);
 
   const run = async (action: () => Promise<{ message: string }>, refresh = true) => {
@@ -126,7 +133,7 @@ export function useAction(reload?: () => Promise<unknown>): ActionApi {
       if (refresh && reload) await reload();
       return true;
     } catch (e) {
-      notify(errorText(e), "error");
+      fail(e);
       return false;
     } finally {
       setBusy(false);
@@ -138,7 +145,7 @@ export function useAction(reload?: () => Promise<unknown>): ActionApi {
     try {
       return await action();
     } catch (e) {
-      notify(errorText(e), "error");
+      fail(e);
       return null;
     } finally {
       setBusy(false);

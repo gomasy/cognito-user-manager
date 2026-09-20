@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { errorText, useNavigate, useT, useToast } from "../hooks";
+import { useNavigate, useT, useToast } from "../hooks";
 import type { AttributeField } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 import { Link, userRoute } from "./Link";
@@ -14,7 +14,7 @@ interface Props {
 export function AdminUserCreate({ fields, groups, usernameIsEmail }: Props) {
   const t = useT();
   const navigate = useNavigate();
-  const { notify } = useToast();
+  const { notify, fail } = useToast();
 
   const [username, setUsername] = useState("");
   const [draft, setDraft] = useState<Draft>(() => initialDraft(fields, {}));
@@ -44,7 +44,7 @@ export function AdminUserCreate({ fields, groups, usernameIsEmail }: Props) {
         navigate(userRoute(result.username));
       }
     } catch (e) {
-      notify(errorText(e), "error");
+      fail(e);
     } finally {
       setBusy(false);
     }

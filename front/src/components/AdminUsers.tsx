@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { errorText, useDateFormat, useT, useToast } from "../hooks";
+import { useDateFormat, useT, useToast } from "../hooks";
 import type { UserSummary } from "../types";
 import { EnabledBadge, StatusBadge } from "./Badge";
 import { Link, userRoute } from "./Link";
@@ -22,7 +22,7 @@ interface Props {
 export function AdminUsers({ poolName, searchFields }: Props) {
   const t = useT();
   const formatDate = useDateFormat();
-  const { notify } = useToast();
+  const { fail } = useToast();
 
   const defaultField = searchFields[0] ?? "";
   const [field, setField] = useState(defaultField);
@@ -43,12 +43,12 @@ export function AdminUsers({ poolName, searchFields }: Props) {
         setUsers(page.users);
         setNextToken(page.nextToken);
       })
-      .catch((e) => notify(errorText(e), "error"))
+      .catch(fail)
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [submitted, token, notify]);
+  }, [submitted, token, fail]);
 
   const search = (event: React.FormEvent) => {
     event.preventDefault();

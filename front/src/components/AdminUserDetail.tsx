@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import {
-  errorText,
   useAction,
   useDateFormat,
   useNavigate,
@@ -37,7 +36,7 @@ export function AdminUserDetail({
   const factor = useWording("factor");
   const navigate = useNavigate();
   const formatDate = useDateFormat();
-  const { notify } = useToast();
+  const { fail } = useToast();
 
   const [user, setUser] = useState<UserDetail | null>(null);
   const [missing, setMissing] = useState(false);
@@ -52,9 +51,9 @@ export function AdminUserDetail({
       setSelectedGroups(detail.groups);
     } catch (e) {
       setMissing(true);
-      notify(errorText(e), "error");
+      fail(e);
     }
-  }, [username, fields, notify]);
+  }, [username, fields, fail]);
 
   useEffect(() => {
     void load();
