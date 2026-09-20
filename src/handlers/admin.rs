@@ -98,10 +98,9 @@ pub async fn create(
         }
         _ => None,
     };
-    let temporary_password = if given.is_empty() {
-        generated.clone()
-    } else {
-        Some(given.to_string())
+    let temporary_password = match given {
+        "" => generated.clone(),
+        typed => Some(typed.to_string()),
     };
 
     let mut request = state
@@ -128,7 +127,7 @@ pub async fn create(
     // A suppressed invitation is never delivered, so a password made up here
     // would otherwise be known to nobody and the account unreachable. When
     // Cognito does mail it out there is nothing to disclose.
-    let disclosed = body.suppress_message.then_some(generated).flatten();
+    let disclosed = generated.filter(|_| body.suppress_message);
 
     Ok(Json(serde_json::json!({
         "message": t!("msg_user_created", locale = &lang),
