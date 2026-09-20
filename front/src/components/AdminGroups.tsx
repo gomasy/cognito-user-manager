@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { errorText, useAction, useDateFormat, useNavigate, useT, useToast } from "../hooks";
+import { errorText, useAction, useDateFormat, useT, useToast } from "../hooks";
 import type { GroupInfo } from "../types";
+import { Link, groupRoute } from "./Link";
 
 interface Props {
   /** The group that grants access to this console, or null if unknown. */
@@ -12,7 +13,6 @@ interface Props {
 
 export function AdminGroups({ adminGroup, onGroupsChanged }: Props) {
   const t = useT();
-  const navigate = useNavigate();
   const formatDate = useDateFormat();
   const { notify } = useToast();
 
@@ -46,8 +46,6 @@ export function AdminGroups({ adminGroup, onGroupsChanged }: Props) {
     return created;
   };
 
-  const open = (name: string) => navigate(`/admin/groups/${encodeURIComponent(name)}`);
-
   return (
     <main className="page">
       <header className="page__header">
@@ -71,15 +69,7 @@ export function AdminGroups({ adminGroup, onGroupsChanged }: Props) {
             {(groups ?? []).map((group) => (
               <tr key={group.name}>
                 <td className="mono">
-                  <a
-                    href={`/admin/groups/${encodeURIComponent(group.name)}`}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      open(group.name);
-                    }}
-                  >
-                    {group.name}
-                  </a>
+                  <Link to={groupRoute(group.name)}>{group.name}</Link>
                   {group.name === adminGroup && (
                     <span className="badge badge--ok">{t("nav.admin")}</span>
                   )}

@@ -12,6 +12,7 @@ import {
 import type { AttributeField, UserDetail } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
 import { EnabledBadge, StatusBadge } from "./Badge";
+import { Link } from "./Link";
 import { MfaCard, MfaSummary } from "./Mfa";
 
 interface Props {
@@ -88,15 +89,7 @@ export function AdminUserDetail({
     <main className="page page--narrow">
       <header className="page__header">
         <p className="hint">
-          <a
-            href="/admin"
-            onClick={(event) => {
-              event.preventDefault();
-              navigate("/admin");
-            }}
-          >
-            {t("admin.backToList")}
-          </a>
+          <Link to="/admin">{t("admin.backToList")}</Link>
         </p>
         <div className="page__header--split">
           <h1 className="mono">{user.username}</h1>

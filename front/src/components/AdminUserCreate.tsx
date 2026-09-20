@@ -3,6 +3,7 @@ import { api } from "../api";
 import { errorText, useNavigate, useT, useToast } from "../hooks";
 import type { AttributeField } from "../types";
 import { AttributeFields, initialDraft, toPatch, type Draft } from "./AttributeFields";
+import { Link, userRoute } from "./Link";
 
 interface Props {
   fields: AttributeField[];
@@ -40,7 +41,7 @@ export function AdminUserCreate({ fields, groups, usernameIsEmail }: Props) {
       if (result.temporaryPassword) {
         setCreated({ username: result.username, password: result.temporaryPassword });
       } else {
-        navigate(`/admin/users/${encodeURIComponent(result.username)}`);
+        navigate(userRoute(result.username));
       }
     } catch (e) {
       notify(errorText(e), "error");
@@ -66,7 +67,7 @@ export function AdminUserCreate({ fields, groups, usernameIsEmail }: Props) {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => navigate(`/admin/users/${encodeURIComponent(created.username)}`)}
+            onClick={() => navigate(userRoute(created.username))}
           >
             {t("create.openUser")}
           </button>
@@ -79,15 +80,7 @@ export function AdminUserCreate({ fields, groups, usernameIsEmail }: Props) {
     <main className="page page--narrow">
       <header className="page__header">
         <p className="hint">
-          <a
-            href="/admin"
-            onClick={(event) => {
-              event.preventDefault();
-              navigate("/admin");
-            }}
-          >
-            {t("admin.backToList")}
-          </a>
+          <Link to="/admin">{t("admin.backToList")}</Link>
         </p>
         <h1>{t("create.title")}</h1>
       </header>

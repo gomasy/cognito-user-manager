@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { errorText, useDateFormat, useNavigate, useT, useToast } from "../hooks";
+import { errorText, useDateFormat, useT, useToast } from "../hooks";
 import type { UserSummary } from "../types";
 import { EnabledBadge, StatusBadge } from "./Badge";
+import { Link, userRoute } from "./Link";
 import { Pager } from "./Pager";
 
 function displayName(user: UserSummary): string {
@@ -20,7 +21,6 @@ interface Props {
 
 export function AdminUsers({ poolName, searchFields }: Props) {
   const t = useT();
-  const navigate = useNavigate();
   const formatDate = useDateFormat();
   const { notify } = useToast();
 
@@ -65,16 +65,9 @@ export function AdminUsers({ poolName, searchFields }: Props) {
             {t("admin.pool")} <span className="mono">{poolName}</span>
           </p>
         </div>
-        <a
-          className="btn btn--primary"
-          href="/admin/users/new"
-          onClick={(event) => {
-            event.preventDefault();
-            navigate("/admin/users/new");
-          }}
-        >
+        <Link to="/admin/users/new" className="btn btn--primary">
           {t("admin.create")}
-        </a>
+        </Link>
       </header>
 
       <form className="card row row--gap row--end" onSubmit={search}>
@@ -131,15 +124,7 @@ export function AdminUsers({ poolName, searchFields }: Props) {
             {users.map((user) => (
               <tr key={user.username}>
                 <td className="mono">
-                  <a
-                    href={`/admin/users/${encodeURIComponent(user.username)}`}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      navigate(`/admin/users/${encodeURIComponent(user.username)}`);
-                    }}
-                  >
-                    {user.username}
-                  </a>
+                  <Link to={userRoute(user.username)}>{user.username}</Link>
                 </td>
                 <td>
                   {user.attributes.email ?? "—"}

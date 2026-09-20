@@ -3,6 +3,7 @@ import { api } from "../api";
 import { errorText, useAction, useDateFormat, useNavigate, useT, useToast } from "../hooks";
 import type { GroupInfo, UserSummary } from "../types";
 import { EnabledBadge, StatusBadge } from "./Badge";
+import { Link, userRoute } from "./Link";
 import { Pager } from "./Pager";
 
 interface Props {
@@ -71,15 +72,7 @@ export function AdminGroupDetail({ group, adminGroup, onGroupsChanged }: Props) 
     <main className="page">
       <header className="page__header">
         <p className="hint">
-          <a
-            href="/admin/groups"
-            onClick={(event) => {
-              event.preventDefault();
-              navigate("/admin/groups");
-            }}
-          >
-            {t("groups.backToList")}
-          </a>
+          <Link to="/admin/groups">{t("groups.backToList")}</Link>
         </p>
         <div className="page__header--split">
           <h1 className="mono">{group}</h1>
@@ -129,15 +122,7 @@ export function AdminGroupDetail({ group, adminGroup, onGroupsChanged }: Props) 
               {members.map((user) => (
                 <tr key={user.username}>
                   <td className="mono">
-                    <a
-                      href={`/admin/users/${encodeURIComponent(user.username)}`}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        navigate(`/admin/users/${encodeURIComponent(user.username)}`);
-                      }}
-                    >
-                      {user.username}
-                    </a>
+                    <Link to={userRoute(user.username)}>{user.username}</Link>
                   </td>
                   <td>{user.attributes.email ?? "—"}</td>
                   <td>
