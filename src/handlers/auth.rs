@@ -169,6 +169,17 @@ fn initiate(
     }
 }
 
+/// The account an alias sign-in resolved to, which is the name every later
+/// call has to use. The password flows report it as `USER_ID_FOR_SRP`;
+/// choice-based authentication, where passkeys live, is not SRP and uses
+/// `USERNAME`.
+fn resolved_username(parameters: &HashMap<String, String>, typed: &str) -> String {
+    ["USER_ID_FOR_SRP", "USERNAME"]
+        .iter()
+        .find_map(|key| parameters.get(*key).cloned())
+        .unwrap_or_else(|| typed.to_string())
+}
+
 /// Stores tokens on success, otherwise records the next challenge.
 fn handle(
     cookies: &Cookies,
@@ -198,12 +209,7 @@ fn handle(
     }
 
     let challenge = StoredChallenge {
-        // After an alias sign-in, Cognito returns the real username to use next.
-        username: response
-            .parameters
-            .get("USER_ID_FOR_SRP")
-            .cloned()
-            .unwrap_or_else(|| fallback_username.to_string()),
+        username: resolved_username(&response.parameters, fallback_username),
         // Sent as ["userAttributes.email"], but answered as plain names.
         required_attributes: parse_json_array(response.parameters.get("requiredAttributes"))
             .into_iter()
@@ -483,6 +489,42 @@ mod tests {
             Some(r#"{"id":"ZXhhbXBsZQ"}"#)
         );
         assert_eq!(responses.get("USERNAME").map(String::as_str), Some("alice"));
+    }
+
+    fn parameters(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect()
+    }
+
+    /// A challenge response naming an alias is refused, so whichever parameter
+    /// carries the resolved username has to win over what was typed.
+    #[test]
+    fn the_account_cognito_resolved_wins_over_the_alias_typed() {
+        assert_eq!(
+            resolved_username(
+                &parameters(&[("USER_ID_FOR_SRP", "alice")]),
+                "a@example.com"
+            ),
+            "alice"
+        );
+        assert_eq!(
+            resolved_username(&parameters(&[("USERNAME", "alice")]), "a@example.com"),
+            "alice"
+        );
+        // Both: SRP's own parameter is the documented one.
+        assert_eq!(
+            resolved_username(
+                &parameters(&[("USER_ID_FOR_SRP", "alice"), ("USERNAME", "a@example.com")]),
+                "a@example.com"
+            ),
+            "alice"
+        );
+        assert_eq!(
+            resolved_username(&parameters(&[]), "a@example.com"),
+            "a@example.com"
+        );
     }
 
     /// Cognito answers a bare parameter error; saying so here keeps the
