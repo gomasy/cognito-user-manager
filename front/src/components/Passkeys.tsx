@@ -42,7 +42,9 @@ export function PasskeyCard({ usable }: Props) {
     void start();
   }, []);
 
-  const { busy, run } = useAction(load);
+  // `start`, so a failed reload offers Retry rather than listing a passkey
+  // that is already gone.
+  const { busy, run } = useAction(start);
 
   const register = () =>
     void run(async () => {

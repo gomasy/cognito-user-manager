@@ -128,13 +128,18 @@ export function useAction(reload?: () => Promise<unknown>): ActionApi {
   const run = async (action: () => Promise<{ message: string }>, refresh = true) => {
     setBusy(true);
     try {
-      const { message } = await action();
-      notify(message);
-      if (refresh && reload) await reload();
-      return true;
-    } catch (e) {
-      fail(e);
-      return false;
+      let done = false;
+      try {
+        const { message } = await action();
+        notify(message);
+        done = true;
+      } catch (e) {
+        fail(e);
+      }
+      // Outside the write's own try: the change went through, so a reload that
+      // fails must not turn the outcome into a refusal.
+      if (done && refresh && reload) await reload().catch(fail);
+      return done;
     } finally {
       setBusy(false);
     }
