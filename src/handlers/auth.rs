@@ -241,13 +241,7 @@ pub async fn login(
     cookies: Cookies,
     Json(body): Json<LoginRequest>,
 ) -> ApiResult<Json<AuthOutcome>> {
-    let username = body.username.trim();
-    if username.is_empty() {
-        return Err(ApiError::bad_request(t!(
-            "error_username_required",
-            locale = &lang
-        )));
-    }
+    let username = super::username(&body.username, &lang)?;
     if body.password.is_empty() {
         return Err(ApiError::bad_request(t!(
             "error_password_required",
@@ -280,13 +274,7 @@ pub async fn passkey(
     cookies: Cookies,
     Json(body): Json<PasskeyRequest>,
 ) -> ApiResult<Json<AuthOutcome>> {
-    let username = body.username.trim();
-    if username.is_empty() {
-        return Err(ApiError::bad_request(t!(
-            "error_username_required",
-            locale = &lang
-        )));
-    }
+    let username = super::username(&body.username, &lang)?;
 
     let response: AuthResponse = initiate(&state, AuthFlowType::UserAuth, username)
         .auth_parameters("PREFERRED_CHALLENGE", WEB_AUTHN)

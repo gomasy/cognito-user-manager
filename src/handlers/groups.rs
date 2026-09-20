@@ -125,13 +125,7 @@ pub async fn add_member(
     Path(group): Path<String>,
     Json(body): Json<MemberRequest>,
 ) -> ApiResult<Json<Value>> {
-    let username = body.username.trim();
-    if username.is_empty() {
-        return Err(ApiError::bad_request(t!(
-            "error_username_required",
-            locale = &lang
-        )));
-    }
+    let username = super::username(&body.username, &lang)?;
 
     // Looking the user up first says which of the two names was wrong, and
     // resolves an alias to the username Cognito wants for the membership call.

@@ -73,13 +73,7 @@ pub async fn create(
     AdminSession(_): AdminSession,
     Json(body): Json<CreateRequest>,
 ) -> ApiResult<Json<Value>> {
-    let username = body.username.trim();
-    if username.is_empty() {
-        return Err(ApiError::bad_request(t!(
-            "error_username_required",
-            locale = &lang
-        )));
-    }
+    let username = super::username(&body.username, &lang)?;
 
     let pool = state.schema.get(&state, &lang).await?;
     // Immutable attributes can still be set at creation time.
