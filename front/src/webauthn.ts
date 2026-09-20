@@ -29,7 +29,13 @@ function decode(value: string): Uint8Array {
 }
 
 function encode(value: ArrayBuffer): string {
-  const binary = String.fromCharCode(...new Uint8Array(value));
+  const bytes = new Uint8Array(value);
+  // One argument per byte overruns the limit on a full attestation statement,
+  // so it goes in blocks.
+  let binary = "";
+  for (let start = 0; start < bytes.length; start += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(start, start + 0x8000));
+  }
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
