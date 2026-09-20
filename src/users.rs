@@ -8,6 +8,7 @@ use serde::Serialize;
 use rust_i18n::t;
 
 use crate::attributes::{Values, to_values};
+use crate::aws;
 use crate::error::{ApiError, ApiResult, cognito};
 use crate::session::Session;
 use crate::state::AppState;
@@ -222,31 +223,28 @@ pub async fn auth_factors(state: &AppState, username: &str) -> Vec<String> {
 /// The membership editor removes any group it does not see here, so a page
 /// left unread would look like a group the user is not in.
 async fn groups_of(state: &AppState, username: &str, lang: &str) -> ApiResult<Vec<String>> {
-    let mut names = Vec::new();
-    let mut next_token: Option<String> = None;
-    loop {
+    aws::every_page(|token| async move {
         let response = state
             .cognito
             .admin_list_groups_for_user()
             .user_pool_id(&state.config.user_pool_id)
             .username(username)
             .limit(60)
-            .set_next_token(next_token)
+            .set_next_token(token)
             .send()
             .await
             .map_err(|error| cognito(error, lang))?;
 
-        names.extend(
+        Ok((
             response
                 .groups()
                 .iter()
-                .filter_map(|group| group.group_name().map(str::to_string)),
-        );
-        next_token = response.next_token().map(str::to_string);
-        if next_token.is_none() {
-            return Ok(names);
-        }
-    }
+                .filter_map(|group| group.group_name().map(str::to_string))
+                .collect(),
+            response.next_token().map(str::to_string),
+        ))
+    })
+    .await
 }
 
 /// The signed-in user's own profile, read with their access token.

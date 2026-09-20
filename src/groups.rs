@@ -12,6 +12,7 @@ use aws_sdk_cognitoidentityprovider::types::GroupType;
 use rust_i18n::t;
 use serde::Serialize;
 
+use crate::aws;
 use crate::error::{ApiError, ApiResult, cognito, cognito_or_missing};
 use crate::state::AppState;
 use crate::users::{self, UserPage};
@@ -60,25 +61,24 @@ fn to_info(group: &GroupType) -> Option<GroupInfo> {
 
 /// Every group in the pool, following pagination and sorted by name.
 pub async fn list(state: &AppState, lang: &str) -> ApiResult<Vec<GroupInfo>> {
-    let mut groups = Vec::new();
-    let mut next_token: Option<String> = None;
-    loop {
+    let mut groups = aws::every_page(|token| async move {
         let response = state
             .cognito
             .list_groups()
             .user_pool_id(&state.config.user_pool_id)
             .limit(LIST_LIMIT)
-            .set_next_token(next_token)
+            .set_next_token(token)
             .send()
             .await
             .map_err(|error| cognito(error, lang))?;
 
-        groups.extend(response.groups().iter().filter_map(to_info));
-        next_token = response.next_token().map(str::to_string);
-        if next_token.is_none() {
-            break;
-        }
-    }
+        Ok((
+            response.groups().iter().filter_map(to_info).collect(),
+            response.next_token().map(str::to_string),
+        ))
+    })
+    .await?;
+
     groups.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(groups)
 }

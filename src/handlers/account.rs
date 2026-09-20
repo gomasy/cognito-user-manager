@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::attributes::{self, Patch};
+use crate::aws;
 use crate::error::{ApiError, ApiResult, cognito, cognito_or_missing};
 use crate::extract::Lang;
 use crate::mfa::{self, TotpSetup};
@@ -332,25 +333,31 @@ pub async fn passkeys(
     Lang(lang): Lang,
     session: Session,
 ) -> ApiResult<Json<Vec<Credential>>> {
-    let mut credentials = Vec::new();
-    let mut next_token: Option<String> = None;
-    loop {
+    // Borrowed first: the reader below is called once per page.
+    let (state, session, lang) = (&state, &session, lang.as_str());
+
+    aws::every_page(|token| async move {
         let response = state
             .cognito
             .list_web_authn_credentials()
             .access_token(&session.access_token)
             .max_results(20)
-            .set_next_token(next_token)
+            .set_next_token(token)
             .send()
             .await
-            .map_err(|error| cognito(error, &lang))?;
+            .map_err(|error| cognito(error, lang))?;
 
-        credentials.extend(response.credentials().iter().map(Credential::from));
-        next_token = response.next_token().map(str::to_string);
-        if next_token.is_none() {
-            return Ok(Json(credentials));
-        }
-    }
+        Ok((
+            response
+                .credentials()
+                .iter()
+                .map(Credential::from)
+                .collect(),
+            response.next_token().map(str::to_string),
+        ))
+    })
+    .await
+    .map(Json)
 }
 
 /// The options the browser needs to make a new passkey. Nothing is registered
